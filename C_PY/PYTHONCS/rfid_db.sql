@@ -53,3 +53,16 @@ CREATE TABLE IF NOT EXISTS tarjetas (
 -- 4. Verificar que la tabla fue creada correctamente
 DESCRIBE tarjetas;
 SELECT * FROM tarjetas;
+
+-- ============================================================
+-- 5. Crear la tabla de puertas ESP32 (Mapeo MAC -> Area)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS puertas (
+    id          INT AUTO_INCREMENT PRIMARY KEY,
+    mac_address VARCHAR(20) NOT NULL UNIQUE COMMENT 'MAC del ESP32 (ej. A1:B2:C3:D4:E5:F6)',
+    nombre      VARCHAR(100) NOT NULL       COMMENT 'Nombre descriptivo de la puerta',
+    area_id     VARCHAR(10) NOT NULL        COMMENT 'ID del area a la que pertenece'
+) ENGINE=InnoDB
+  DEFAULT CHARSET=utf8mb4
+  COLLATE=utf8mb4_unicode_ci
+  COMMENT='Registro de ESP32s instalados en las puertas y sus areas asignadas';

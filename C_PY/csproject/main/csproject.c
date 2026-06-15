@@ -3,22 +3,40 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdbool.h>
-#include "driver/uart.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/spi_master.h"
 #include "driver/gpio.h"
 #include "esp_log.h"
+#include "esp_wifi.h"
+#include "esp_event.h"
+#include "nvs_flash.h"
+#include "esp_netif.h"
+#include "lwip/inet.h"
+#include "esp_http_client.h"
+#include "cJSON.h"
+#include <time.h>
+#include <sys/time.h>
+#include "esp_sntp.h"
+
+/* Configuracion Wi-Fi */
+#define WIFI_SSID "Alejandro"
+#define WIFI_PASS "123456789"
+
+/* Variable global para almacenar la MAC Address */
+char mac_address_str[18] = {0};
+
 /* Pines */
 #define PIN_NUM_MISO 19
 #define PIN_NUM_MOSI 23
 #define PIN_NUM_CLK 18
 #define PIN_NUM_CS 5
 #define PIN_NUM_RST 22
-/* SPI y UART */
+#define PIN_LED_VERDE 2 /* LED Verde */
+#define PIN_LED_ROJO 4 /* LED Rojo para tarjetas denegadas */
+#define PIN_LED_AZUL 21 /* LED Azul */
+/* SPI y Config */
 #define SPI_HOST SPI2_HOST
-#define UART_PORT UART_NUM_0
-#define BUF_SIZE 128
 #define MAX_TARJETAS 50
 
 static spi_device_handle_t spi; /*Manejador del dispositivo SPI para el RC522*/
@@ -160,8 +178,91 @@ void eliminar_tarjeta(uint8_t *uid) /*Función para eliminar una tarjeta existen
 /* Conversión de hexadecimal a bytes */
 void hexStringToBytes(char *hex, uint8_t *bytes)
 {
-    for (int i = 0; i < 4; i++) 
-        sscanf(hex + 2 * i, "%2hhx", &bytes[i]); /*Lee 2 caracteres hexadecimales y los convierte a un byte*/
+    for (int i = 0; i < 4; i++) {
+        unsigned int val;
+        sscanf(hex + 2 * i, "%2x", &val);
+        bytes[i] = (uint8_t)val;
+    }
+}
+
+/* ── Sistema de Logs Offline en Memoria Caché ────────────────── */
+#define MAX_OFFLINE_LOGS 100
+
+typedef struct {
+    char uid[11];
+    time_t timestamp;
+} offline_log_t;
+
+static offline_log_t offline_logs[MAX_OFFLINE_LOGS];
+static int offline_log_head = 0;
+static int offline_log_tail = 0;
+static int offline_log_count = 0;
+
+void enqueue_offline_log(const char *uid_str, time_t ts)
+{
+    if (offline_log_count >= MAX_OFFLINE_LOGS) {
+        // Cola llena, descartar el más antiguo (desplazar cabeza)
+        offline_log_head = (offline_log_head + 1) % MAX_OFFLINE_LOGS;
+        offline_log_count--;
+        ESP_LOGW("LOG", "Cola offline llena, descartando log antiguo");
+    }
+    strncpy(offline_logs[offline_log_tail].uid, uid_str, 10);
+    offline_logs[offline_log_tail].uid[10] = '\0';
+    offline_logs[offline_log_tail].timestamp = ts;
+    
+    offline_log_tail = (offline_log_tail + 1) % MAX_OFFLINE_LOGS;
+    offline_log_count++;
+    ESP_LOGI("LOG", "Log guardado en caché offline: %s en ts %ld. Total acumulados: %d", uid_str, (long)ts, offline_log_count);
+}
+
+/* Enviar log via Wi-Fi */
+bool send_log_wifi(const char *uid_str, time_t ts)
+{
+    char url[250];
+    snprintf(url, sizeof(url), "http://192.168.137.1/log.php?uid=%s&mac=%s&ts=%ld", uid_str, mac_address_str, (long)ts);
+    esp_http_client_config_t config = {
+        .url = url,
+        .timeout_ms = 2000,
+    };
+    esp_http_client_handle_t client = esp_http_client_init(&config);
+    esp_err_t err = esp_http_client_perform(client);
+    bool success = false;
+    if (err == ESP_OK) {
+        int status_code = esp_http_client_get_status_code(client);
+        if (status_code == 200) {
+            ESP_LOGI("LOG", "Log enviado por Wi-Fi correctamente: %s", uid_str);
+            success = true;
+        } else {
+            ESP_LOGE("LOG", "Servidor respondió con código: %d", status_code);
+        }
+    } else {
+        ESP_LOGE("LOG", "Error enviando log %s: %s", uid_str, esp_err_to_name(err));
+    }
+    esp_http_client_cleanup(client);
+    return success;
+}
+
+void flush_offline_logs()
+{
+    if (offline_log_count == 0) return;
+    
+    ESP_LOGI("LOG", "¡Conexión recuperada! Vaciando %d logs guardados en caché...", offline_log_count);
+    while (offline_log_count > 0) {
+        char *uid_str = offline_logs[offline_log_head].uid;
+        time_t ts = offline_logs[offline_log_head].timestamp;
+        
+        if (send_log_wifi(uid_str, ts)) {
+            offline_log_head = (offline_log_head + 1) % MAX_OFFLINE_LOGS;
+            offline_log_count--;
+            vTaskDelay(pdMS_TO_TICKS(100)); // Pausa breve entre envíos para no saturar
+        } else {
+            ESP_LOGW("LOG", "Fallo al enviar log offline, posponiendo resto del vaciado");
+            break;
+        }
+    }
+    if (offline_log_count == 0) {
+        ESP_LOGI("LOG", "Todos los logs offline fueron enviados con éxito");
+    }
 }
 
 /* Tarea RFID */
@@ -175,75 +276,169 @@ void rfid_task(void *arg)
             char uid_str[11] = ""; /*Array para almacenar el UID en formato hexadecimal*/
             for (int i = 0; i < 4; i++)
                 sprintf(uid_str + i * 2, "%02X", uid[i]); /*Convertir cada byte del UID a su representación hexadecimal y concatenarla en uid_str*/
+            
+            /* (Opcional) Aún puedes enviarlo por serial si alguien lo está escuchando */
             printf("{\"uid\":\"%s\"}\n", uid_str);
-            vTaskDelay(pdMS_TO_TICKS(1000)); /*Sirve para evitar lecturas múltiples de la misma tarjeta */
+            
+            time_t current_time = time(NULL);
+            
+            /* Encender LED verde si la tarjeta está en memoria */
+            if (tarjeta_existe(uid)) {
+                gpio_set_level(PIN_LED_VERDE, 1);
+                gpio_set_level(PIN_LED_AZUL, 0);
+                if (!send_log_wifi(uid_str, current_time)) {
+                    enqueue_offline_log(uid_str, current_time);
+                }
+                vTaskDelay(pdMS_TO_TICKS(1000));
+                gpio_set_level(PIN_LED_VERDE, 0);
+                vTaskDelay(pdMS_TO_TICKS(4000));
+                gpio_set_level(PIN_LED_AZUL, 1);
+            } else {
+                gpio_set_level(PIN_LED_ROJO, 1);
+                if (!send_log_wifi(uid_str, current_time)) {
+                    enqueue_offline_log(uid_str, current_time);
+                }
+                vTaskDelay(pdMS_TO_TICKS(1000)); 
+                gpio_set_level(PIN_LED_ROJO, 0);
+            }
         }
         vTaskDelay(pdMS_TO_TICKS(200)); /*Pequeña espera para reducir carga de la CPU*/
     }
 }
 
-/*Tarea consola */
-void consola_task(void *arg)
+/* Tarea HTTP Sync */
+void http_sync_task(void *arg)
 {
-    uart_driver_install(UART_PORT, BUF_SIZE * 2, 0, 0, NULL, 0);
-    uint8_t data[BUF_SIZE];
-    /* Procesar comandos recibidos por UART */
-    while (1)
-    {
-        int len = uart_read_bytes(UART_PORT, data, BUF_SIZE - 1, pdMS_TO_TICKS(100));
-        if (len <= 0)
-        {
-            vTaskDelay(pdMS_TO_TICKS(50)); 
-            continue;
-        }
-
-        data[len] = '\0';
-        char *cmd = (char *)data;
-        cmd[strcspn(cmd, "\r\n")] = 0;
-
-        if (cmd[0] == '{')
-            continue; /*Ignora el {} JSON RFID de la cadena*/
-        if (cmd[0] == '[')
-        { /*Recibir la lista desde Python*/
-            char *token = strtok(cmd, "[\",]");
-            while (token != NULL)
-            {
-                if (strlen(token) >= 8) /*Si el token tiene al menos 8 caracteres (4 bytes en hexadecimal) */
-                {
-                    uint8_t uid_bytes[4]; /*Array para almacenar los bytes del UID */
-                    hexStringToBytes(token, uid_bytes);
-                    agregar_tarjeta(uid_bytes);
+    while (1) {
+        char url[200];
+        snprintf(url, sizeof(url), "http://192.168.137.1/api.php?mac=%s", mac_address_str);
+        
+        esp_http_client_config_t config = {
+            .url = url,
+            .timeout_ms = 5000,
+        };
+        esp_http_client_handle_t client = esp_http_client_init(&config);
+        
+        esp_err_t err = esp_http_client_open(client, 0);
+        if (err == ESP_OK) {
+            flush_offline_logs();
+            esp_http_client_fetch_headers(client);
+            char buffer[1024] = {0};
+            int read_len = esp_http_client_read_response(client, buffer, sizeof(buffer) - 1);
+            if (read_len >= 0) {
+                buffer[read_len] = '\0';
+                ESP_LOGI("HTTP", "Recibido JSON");
+                cJSON *json = cJSON_Parse(buffer);
+                if (json != NULL) {
+                    int count = cJSON_GetArraySize(json);
+                    total_tarjetas = 0; /* Limpiar memoria para la actualizacion */
+                    for (int i = 0; i < count && i < MAX_TARJETAS; i++) {
+                        cJSON *item = cJSON_GetArrayItem(json, i);
+                        if (cJSON_IsString(item) && item->valuestring != NULL) {
+                            if (strlen(item->valuestring) >= 8) {
+                                uint8_t uid_bytes[4];
+                                hexStringToBytes(item->valuestring, uid_bytes);
+                                ESP_LOGI("HTTP", "Guardando tarjeta: %02X%02X%02X%02X", uid_bytes[0], uid_bytes[1], uid_bytes[2], uid_bytes[3]);
+                                agregar_tarjeta(uid_bytes);
+                            }
+                        }
+                    }
+                    cJSON_Delete(json);
+                    ESP_LOGI("HTTP", "Sincronizacion completada. Tarjetas en memoria: %d", total_tarjetas);
+                } else {
+                    ESP_LOGE("HTTP", "Error parseando JSON. Posiblemente desconectado de BD.");
                 }
-                token = strtok(NULL, "[\",]"); /*Obtener el siguiente token*/
+            } else {
+                ESP_LOGE("HTTP", "Error leyendo respuesta del servidor");
             }
-            continue;
+        } else {
+            ESP_LOGE("HTTP", "Error conectando al servidor XAMPP (192.168.137.1)");
         }
-
-        if (strcmp(cmd, "ADD") == 0) /*Agregar tarjeta*/
-        {
-            modo = MODO_ADD;
-        }
-        else if (strcmp(cmd, "DEL") == 0) /*Eliminar tarjeta*/
-        {
-            modo = MODO_DEL;
-        }
-        else if (strcmp(cmd, "LIST") == 0) /*Listar tarjetas*/
-        { /*List en JSON limpio*/
-            printf("[");
-            for (int i = 0; i < total_tarjetas; i++) /*Recorrer la lista de tarjetas*/
-            {
-                printf("\"%02X%02X%02X%02X\"", tarjetas[i][0], tarjetas[i][1], tarjetas[i][2], tarjetas[i][3]);
-                if (i < total_tarjetas - 1)
-                    printf(",");
-            }
-            printf("]\n");
-        }
+        esp_http_client_cleanup(client);
+        
+        vTaskDelay(pdMS_TO_TICKS(10000)); /* Consultar cada 10 segundos */
     }
+}
+
+/* Wi-Fi Handler y Setup */
+void initialize_sntp(void)
+{
+    ESP_LOGI("NTP", "Inicializando SNTP");
+    esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
+    esp_sntp_setservername(0, "pool.ntp.org");
+    esp_sntp_init();
+    
+    // Configurar Zona Horaria a México Central (CST/CDT)
+    setenv("TZ", "CST6CDT,M4.1.0,M10.5.0", 1);
+    tzset();
+}
+
+static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data) {
+    if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
+        esp_wifi_connect();
+    } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
+        ESP_LOGI("WIFI", "Conexion perdida, reintentando...");
+        esp_wifi_connect();
+    } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
+        ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
+        ESP_LOGI("WIFI", "¡Conectado a Internet! IP Asignada: " IPSTR, IP2STR(&event->ip_info.ip));
+        // Inicializar sincronización de tiempo (NTP) cuando nos conectamos
+        initialize_sntp();
+    }
+}
+
+void wifi_init_sta(void) {
+    ESP_ERROR_CHECK(esp_netif_init());
+    ESP_ERROR_CHECK(esp_event_loop_create_default());
+    
+    esp_netif_t *sta_netif = esp_netif_create_default_wifi_sta();
+
+    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+
+    // Obtener la dirección MAC
+    uint8_t mac[6];
+    esp_wifi_get_mac(WIFI_IF_STA, mac);
+    snprintf(mac_address_str, sizeof(mac_address_str), "%02X:%02X:%02X:%02X:%02X:%02X", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    ESP_LOGI("WIFI", "MAC Address de este ESP32: %s", mac_address_str);
+
+    esp_event_handler_instance_t instance_any_id;
+    esp_event_handler_instance_t instance_got_ip;
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL, &instance_any_id));
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &wifi_event_handler, NULL, &instance_got_ip));
+
+    wifi_config_t wifi_config = {
+        .sta = {
+            .ssid = WIFI_SSID,
+            .password = WIFI_PASS,
+            .threshold.authmode = WIFI_AUTH_WPA2_PSK,
+        },
+    };
+    
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
+    ESP_ERROR_CHECK(esp_wifi_start());
+    
+    // Desactivar ahorro de energia para evitar perdida de paquetes/ping
+    ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
+    
+    ESP_LOGI("WIFI", "wifi_init_sta completado. Conectando a %s", WIFI_SSID);
 }
 
 /*Main*/
 void app_main(void)
 {
+    // Inicializar NVS (requerido por el Wi-Fi)
+    esp_err_t ret = nvs_flash_init();
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+      ESP_ERROR_CHECK(nvs_flash_erase());
+      ret = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(ret);
+
+    // Inicializar Wi-Fi
+    wifi_init_sta();
+
     spi_bus_config_t buscfg = {.miso_io_num = PIN_NUM_MISO, .mosi_io_num = PIN_NUM_MOSI, .sclk_io_num = PIN_NUM_CLK, .quadwp_io_num = -1, .quadhd_io_num = -1};
     spi_bus_initialize(SPI_HOST, &buscfg, SPI_DMA_CH_AUTO); 
 
@@ -252,8 +447,18 @@ void app_main(void)
 
     gpio_set_direction(PIN_NUM_RST, GPIO_MODE_OUTPUT);
     gpio_set_level(PIN_NUM_RST, 1);
+    
+    gpio_set_direction(PIN_LED_VERDE, GPIO_MODE_OUTPUT);
+    gpio_set_level(PIN_LED_VERDE, 0);
+
+    gpio_set_direction(PIN_LED_ROJO, GPIO_MODE_OUTPUT);
+    gpio_set_level(PIN_LED_ROJO, 0);
+
+    gpio_reset_pin(PIN_LED_AZUL);
+    gpio_set_direction(PIN_LED_AZUL, GPIO_MODE_OUTPUT);
+    gpio_set_level(PIN_LED_AZUL, 1);
 
     rc522_init();
     xTaskCreate(rfid_task, "rfid_task", 4096, NULL, 5, NULL);
-    xTaskCreate(consola_task, "consola_task", 4096, NULL, 5, NULL);
+    xTaskCreate(http_sync_task, "http_sync_task", 6144, NULL, 5, NULL);
 }
