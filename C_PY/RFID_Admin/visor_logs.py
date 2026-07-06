@@ -29,14 +29,14 @@ class MonitorRFID(tk.Tk):
         super().__init__()
         self.title("Monitor de Accesos Wi-Fi - RFID (Múltiples Puertas)")
         self.geometry("850x600")
-        self.configure(bg="#09090B")
+        self.configure(bg="#FFFFFF")
         
         self.running = True
         self.last_log_id = 0 
         self.permitidos_count = 0
         self.denegados_count = 0
         
-        self.text_widgets = {}  # Diccionario para guardar los Text widgets de cada pestaña
+        self.tree_widgets = {}  # Diccionario para guardar los Treeview de cada pestaña
         
         self.crear_interfaz()
         
@@ -45,7 +45,7 @@ class MonitorRFID(tk.Tk):
 
     def crear_interfaz(self):
         # Header Container
-        header_frame = tk.Frame(self, bg="#18181B", height=60)
+        header_frame = tk.Frame(self, bg="#FFFFFF", height=60)
         header_frame.pack(fill=tk.X)
         header_frame.pack_propagate(False)
 
@@ -53,8 +53,8 @@ class MonitorRFID(tk.Tk):
             header_frame, 
             text="📡 SISTEMA RFID — MONITOR DE ACCESOS EN VIVO", 
             font=("Segoe UI", 12, "bold"), 
-            bg="#18181B", 
-            fg="#F4F4F5"
+            bg="#FFFFFF", 
+            fg="#033966"
         )
         lbl_titulo.pack(side=tk.LEFT, padx=20, pady=15)
 
@@ -63,13 +63,13 @@ class MonitorRFID(tk.Tk):
             header_frame,
             text="● ESP32 ONLINE",
             font=("Segoe UI", 10, "bold"),
-            bg="#18181B",
-            fg="#10B981"
+            bg="#FFFFFF",
+            fg="#0A8504"
         )
         self.lbl_status_indicator.pack(side=tk.RIGHT, padx=20, pady=15)
 
         # Main container with Notebook
-        main_frame = tk.Frame(self, bg="#09090B")
+        main_frame = tk.Frame(self, bg="#FFFFFF")
         main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
         
         # Estilos oscuros para las pestañas
@@ -78,8 +78,12 @@ class MonitorRFID(tk.Tk):
         style.configure('TNotebook', background="#09090B", borderwidth=0)
         style.configure('TNotebook.Tab', background="#18181B", foreground="#A1A1AA", padding=[15, 8], font=("Segoe UI", 10))
         style.map('TNotebook.Tab', 
-                  background=[('selected', '#3f3f46')], 
+                  background=[('selected', '#033966')], 
                   foreground=[('selected', '#ffffff')])
+                  
+        # Estilos para Treeview
+        style.configure('Treeview', font=("Segoe UI", 10), rowheight=25)
+        style.configure('Treeview.Heading', font=("Segoe UI", 10, "bold"))
 
         self.notebook = ttk.Notebook(main_frame)
         self.notebook.pack(fill=tk.BOTH, expand=True)
@@ -92,7 +96,7 @@ class MonitorRFID(tk.Tk):
             self.crear_pestana(area_nombre)
 
         # Stats footer
-        footer_frame = tk.Frame(self, bg="#18181B", height=40)
+        footer_frame = tk.Frame(self, bg="#FFFFFF", height=40)
         footer_frame.pack(fill=tk.X, side=tk.BOTTOM)
         footer_frame.pack_propagate(False)
 
@@ -100,46 +104,50 @@ class MonitorRFID(tk.Tk):
             footer_frame,
             text="Resumen Global:  Permitidos: 0  |  Denegados: 0",
             font=("Segoe UI", 9, "bold"),
-            bg="#18181B",
-            fg="#A1A1AA"
+            bg="#FFFFFF",
+            fg="#404040"
         )
         self.lbl_stats.pack(side=tk.LEFT, padx=20, pady=10)
 
-        self.escribir_log("Iniciando conexión con base de datos...\n", "gray", "General (Todas las puertas)")
-        self.escribir_log("Esperando registros Wi-Fi de las puertas ESP32...\n", "gray", "General (Todas las puertas)")
-        self.escribir_log("-" * 75 + "\n", "gray", "General (Todas las puertas)")
+        self.escribir_log({
+            "uid": "-", "nombre": "Sistema", "area": "-", "motivo": "Iniciando conexión con base de datos...", "entrada": "-", "salida": "-"
+        }, "gray", "General (Todas las puertas)")
+        self.escribir_log({
+            "uid": "-", "nombre": "Sistema", "area": "-", "motivo": "Esperando registros Wi-Fi...", "entrada": "-", "salida": "-"
+        }, "gray", "General (Todas las puertas)")
 
     def crear_pestana(self, nombre_pestana):
-        frame = tk.Frame(self.notebook, bg="#18181B")
+        frame = tk.Frame(self.notebook, bg="#FFFFFF")
         self.notebook.add(frame, text=nombre_pestana)
         
-        pane = tk.PanedWindow(frame, orient=tk.HORIZONTAL, bg="#18181B", sashwidth=4, sashpad=2)
-        pane.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        columns = ("uid", "nombre", "area", "motivo", "entrada", "salida")
+        tree = ttk.Treeview(frame, columns=columns, show="headings", selectmode="none")
         
-        frame_in = tk.Frame(pane, bg="#18181B")
-        frame_out = tk.Frame(pane, bg="#18181B")
-        pane.add(frame_in)
-        pane.add(frame_out)
+        tree.heading("uid", text="UID")
+        tree.heading("nombre", text="Nombre")
+        tree.heading("area", text="Área")
+        tree.heading("motivo", text="Motivo")
+        tree.heading("entrada", text="Entrada")
+        tree.heading("salida", text="Salida")
         
-        lbl_in = tk.Label(frame_in, text="ENTRADAS", font=("Segoe UI", 10, "bold"), bg="#18181B", fg="#10B981")
-        lbl_in.pack(anchor="w", padx=5, pady=5)
+        tree.column("uid", width=100, anchor=tk.CENTER)
+        tree.column("nombre", width=150, anchor=tk.CENTER)
+        tree.column("area", width=120, anchor=tk.CENTER)
+        tree.column("motivo", width=250, anchor=tk.CENTER)
+        tree.column("entrada", width=100, anchor=tk.CENTER)
+        tree.column("salida", width=100, anchor=tk.CENTER)
         
-        lbl_out = tk.Label(frame_out, text="SALIDAS", font=("Segoe UI", 10, "bold"), bg="#18181B", fg="#0EA5E9")
-        lbl_out.pack(anchor="w", padx=5, pady=5)
+        tree.tag_configure("red", foreground="#9C0303")
+        tree.tag_configure("green", foreground="#0A8504")
+        tree.tag_configure("gray", foreground="#808080")
         
-        def setup_text(parent):
-            t = tk.Text(parent, state=tk.DISABLED, bg="#18181B", fg="#E4E4E7", font=("Consolas", 10), relief=tk.FLAT, padx=10, pady=10, insertbackground="white")
-            t.pack(fill=tk.BOTH, expand=True)
-            t.tag_config("red", foreground="#EF4444")
-            t.tag_config("green", foreground="#10B981")
-            t.tag_config("gray", foreground="#71717A")
-            t.tag_config("white", foreground="#E4E4E7")
-            return t
-            
-        txt_in = setup_text(frame_in)
-        txt_out = setup_text(frame_out)
+        scrollbar = ttk.Scrollbar(frame, orient=tk.VERTICAL, command=tree.yview)
+        tree.configure(yscrollcommand=scrollbar.set)
         
-        self.text_widgets[nombre_pestana] = {"Entrada": txt_in, "Salida": txt_out}
+        tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y, pady=5)
+        
+        self.tree_widgets[nombre_pestana] = tree
 
     def actualizar_stats(self):
         self.lbl_stats.config(
@@ -164,30 +172,25 @@ class MonitorRFID(tk.Tk):
                     ts = str(fecha)[11:19]
                     area_legible = obtener_nombre_area(area)
                     
+                    entrada_val = ts if tipo == "Entrada" else "-"
+                    salida_val = ts if tipo == "Salida" else "-"
+                    
                     if not row:
                         self.denegados_count += 1
-                        mensaje = (
-                            f"[{ts}] ACCESO DENEGADO ❌\n"
-                            f" ├─ UID: {uid}\n"
-                            f" ├─ Usuario: Desconocido (No Registrado)\n"
-                            f" ├─ Puerta: {area_legible}\n"
-                            f" └─ Motivo: Tarjeta no registrada en el sistema\n"
-                            f"{'-'*75}\n"
-                        )
-                        self.escribir_log(mensaje, "red", area_legible, tipo)
+                        data = {
+                            "uid": uid, "nombre": "Desconocido", "area": area_legible,
+                            "motivo": "Tarjeta no registrada", "entrada": entrada_val, "salida": salida_val
+                        }
+                        self.escribir_log(data, "red", area_legible)
                     else:
                         uid_db, nombre, areas_raw, activa = row
                         if not activa:
                             self.denegados_count += 1
-                            mensaje = (
-                                f"[{ts}] ACCESO DENEGADO ❌\n"
-                                f" ├─ UID: {uid}\n"
-                                f" ├─ Usuario: {nombre}\n"
-                                f" ├─ Puerta: {area_legible}\n"
-                                f" └─ Motivo: Tarjeta inactiva / deshabilitada\n"
-                                f"{'-'*75}\n"
-                            )
-                            self.escribir_log(mensaje, "red", area_legible, tipo)
+                            data = {
+                                "uid": uid, "nombre": nombre, "area": area_legible,
+                                "motivo": "Tarjeta inactiva / deshabilitada", "entrada": entrada_val, "salida": salida_val
+                            }
+                            self.escribir_log(data, "red", area_legible)
                         else:
                             # Extraer ID del área a partir de su nombre legible
                             area_id = None
@@ -200,25 +203,18 @@ class MonitorRFID(tk.Tk):
                             
                             if area_id and area_id not in lista_permisos:
                                 self.denegados_count += 1
-                                mensaje = (
-                                    f"[{ts}] ACCESO DENEGADO ❌\n"
-                                    f" ├─ UID: {uid}\n"
-                                    f" ├─ Usuario: {nombre}\n"
-                                    f" ├─ Puerta: {area_legible}\n"
-                                    f" └─ Motivo: Usuario sin permisos para esta área\n"
-                                    f"{'-'*75}\n"
-                                )
-                                self.escribir_log(mensaje, "red", area_legible, tipo)
+                                data = {
+                                    "uid": uid, "nombre": nombre, "area": area_legible,
+                                    "motivo": "Usuario sin permisos para esta área", "entrada": entrada_val, "salida": salida_val
+                                }
+                                self.escribir_log(data, "red", area_legible)
                             else:
                                 self.permitidos_count += 1
-                                mensaje = (
-                                    f"[{ts}] ACCESO PERMITIDO ✔️\n"
-                                    f" ├─ UID: {uid}\n"
-                                    f" ├─ Usuario: {nombre}\n"
-                                    f" └─ Puerta: {area_legible}\n"
-                                    f"{'-'*75}\n"
-                                )
-                                self.escribir_log(mensaje, "green", area_legible, tipo)
+                                data = {
+                                    "uid": uid, "nombre": nombre, "area": area_legible,
+                                    "motivo": "-", "entrada": entrada_val, "salida": salida_val
+                                }
+                                self.escribir_log(data, "green", area_legible)
                             
                     self.actualizar_stats()
             except Error:
@@ -229,23 +225,31 @@ class MonitorRFID(tk.Tk):
         if self.running:
             self.after(2000, self.consultar_logs_wifi)
 
-    def escribir_log(self, mensaje, color="white", area_legible="", tipo="Entrada"):
-        def escribir(txt_widget):
-            if txt_widget:
-                txt_widget.config(state=tk.NORMAL)
-                txt_widget.insert(tk.END, mensaje, color)
-                txt_widget.see(tk.END)
-                txt_widget.config(state=tk.DISABLED)
+    def escribir_log(self, data, color="black", area_legible=""):
+        def escribir(tree_widget):
+            if tree_widget:
+                tree_widget.insert("", tk.END, values=(
+                    data.get("uid", "-"),
+                    data.get("nombre", "-"),
+                    data.get("area", "-"),
+                    data.get("motivo", "-"),
+                    data.get("entrada", "-"),
+                    data.get("salida", "-")
+                ), tags=(color,))
+                children = tree_widget.get_children()
+                if children:
+                    tree_widget.see(children[-1])
 
         # Siempre escribimos en la pestaña General
-        dict_gen = self.text_widgets.get("General (Todas las puertas)")
-        if dict_gen:
-            escribir(dict_gen.get(tipo))
+        tree_gen = self.tree_widgets.get("General (Todas las puertas)")
+        if tree_gen:
+            escribir(tree_gen)
             
         # Escribimos también en la pestaña específica del área (si existe)
-        dict_area = self.text_widgets.get(area_legible)
-        if dict_area:
-            escribir(dict_area.get(tipo))
+        if area_legible and area_legible != "General (Todas las puertas)":
+            tree_area = self.tree_widgets.get(area_legible)
+            if tree_area:
+                escribir(tree_area)
 
     def destroy(self):
         self.running = False

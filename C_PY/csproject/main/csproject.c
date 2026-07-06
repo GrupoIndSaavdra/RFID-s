@@ -459,6 +459,16 @@ void app_main(void)
     gpio_set_level(PIN_LED_AZUL, 1);
 
     rc522_init();
+    
+    // Leer el registro de versión del RC522 (0x37) para verificar si hay conexión SPI
+    uint8_t version = rc522_read(0x37);
+    ESP_LOGI("SPI", "INITIALIZATION DEBUG: RC522 Firmware Version: 0x%02X", version);
+    if (version == 0x00 || version == 0xFF) {
+        ESP_LOGE("SPI", "ERROR: RC522 NO DETECTADO. ¡Revisa los cables MISO, MOSI, SCK, CS, RST y la corriente (3.3V)!");
+    } else {
+        ESP_LOGI("SPI", "ÉXITO: RC522 detectado y listo para leer.");
+    }
+
     xTaskCreate(rfid_task, "rfid_task", 4096, NULL, 5, NULL);
     xTaskCreate(http_sync_task, "http_sync_task", 6144, NULL, 5, NULL);
 }

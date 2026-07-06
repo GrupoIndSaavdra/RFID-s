@@ -53,7 +53,7 @@ if ($uid !== '' && $mac !== '') {
 
     $ts = isset($_GET['ts']) ? $_GET['ts'] : '';
     
-    if ($ts !== '') {
+    if (is_numeric($ts) && $ts > 1000000000) {
         $stmt2 = $conn->prepare("INSERT INTO registros_acceso (uid, area, fecha, tipo) VALUES (?, ?, FROM_UNIXTIME(?), ?)");
         $stmt2->bind_param("ssis", $uid, $area_nombre, $ts, $tipo_puerta);
     } else {

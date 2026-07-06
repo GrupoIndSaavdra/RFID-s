@@ -39,7 +39,7 @@ def listar_usuarios() -> list:
     
     try:
         cur = conn.cursor()
-        cur.execute("SELECT uid, nombre, areas, fecha_registro, activa FROM tarjetas ORDER BY nombre")
+        cur.execute("SELECT uid, nombre, areas, fecha_registro, activa, fecha_modificacion FROM tarjetas ORDER BY nombre")
         return cur.fetchall()
     except Exception as e:
         print(f"Error listando usuarios: {e}")
