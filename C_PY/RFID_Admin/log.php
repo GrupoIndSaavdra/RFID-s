@@ -54,11 +54,40 @@ if ($uid !== '' && $mac !== '') {
     $ts = isset($_GET['ts']) ? $_GET['ts'] : '';
     
     if (is_numeric($ts) && $ts > 1000000000) {
-        $stmt2 = $conn->prepare("INSERT INTO registros_acceso (uid, area, fecha, tipo) VALUES (?, ?, FROM_UNIXTIME(?), ?)");
-        $stmt2->bind_param("ssis", $uid, $area_nombre, $ts, $tipo_puerta);
+        $timestamp_val = "FROM_UNIXTIME(" . intval($ts) . ")";
     } else {
-        $stmt2 = $conn->prepare("INSERT INTO registros_acceso (uid, area, tipo) VALUES (?, ?, ?)");
-        $stmt2->bind_param("sss", $uid, $area_nombre, $tipo_puerta);
+        $timestamp_val = "NOW()";
+    }
+
+    if ($tipo_puerta === "Entrada") {
+        $stmt_check = $conn->prepare("SELECT id FROM registros_acceso WHERE uid = ? AND tipo = 'Entrada' AND fecha >= DATE_SUB($timestamp_val, INTERVAL 2 MINUTE) AND fecha_salida IS NULL ORDER BY id DESC LIMIT 1");
+        $stmt_check->bind_param("s", $uid);
+        $stmt_check->execute();
+        $res_check = $stmt_check->get_result();
+        if ($res_check->fetch_assoc()) {
+            echo json_encode(["status" => "ok", "msg" => "Ignored, passed < 2 mins ago"]);
+            $stmt_check->close();
+            $conn->close();
+            exit();
+        }
+        $stmt_check->close();
+
+        $stmt2 = $conn->prepare("INSERT INTO registros_acceso (uid, area, fecha, tipo) VALUES (?, ?, $timestamp_val, 'Entrada')");
+        $stmt2->bind_param("ss", $uid, $area_nombre);
+    } else {
+        $stmt_check = $conn->prepare("SELECT id FROM registros_acceso WHERE uid = ? AND DATE(fecha) = DATE($timestamp_val) AND fecha_salida IS NULL ORDER BY id DESC LIMIT 1");
+        $stmt_check->bind_param("s", $uid);
+        $stmt_check->execute();
+        $res_check = $stmt_check->get_result();
+        if ($row = $res_check->fetch_assoc()) {
+            $log_id = $row['id'];
+            $stmt2 = $conn->prepare("UPDATE registros_acceso SET fecha_salida = $timestamp_val WHERE id = ?");
+            $stmt2->bind_param("i", $log_id);
+        } else {
+            $stmt2 = $conn->prepare("INSERT INTO registros_acceso (uid, area, fecha, tipo, fecha_salida) VALUES (?, ?, NULL, 'Salida', $timestamp_val)");
+            $stmt2->bind_param("ss", $uid, $area_nombre);
+        }
+        $stmt_check->close();
     }
     
     if ($stmt2->execute()) {
