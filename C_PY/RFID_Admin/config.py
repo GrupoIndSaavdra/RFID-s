@@ -3,7 +3,7 @@
 
 # ── Configuración Serial (Lector USB Administrador) ──────────
 # Puerto USB donde está conectado el ESP32 de "lector_registro.c"
-PUERTO   = "COM6"
+PUERTO   = "COM4"
 BAUDRATE = 115200
 
 # ── Configuracion MySQL (XAMPP) ──────────────────────────────

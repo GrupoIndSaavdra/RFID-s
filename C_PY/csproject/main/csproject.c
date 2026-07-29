@@ -18,6 +18,34 @@
 #include <time.h>
 #include <sys/time.h>
 #include "esp_sntp.h"
+#include "driver/i2c.h"
+#include "esp_vfs_fat.h"
+#include "sdmmc_cmd.h"
+#include "driver/sdspi_host.h"
+
+/* I2C y Hardware Config */
+#define I2C_EEPROM_SDA_IO           32
+#define I2C_EEPROM_SCL_IO           33
+#define I2C_EEPROM_NUM              0
+
+#define I2C_RTC_SDA_IO              13
+#define I2C_RTC_SCL_IO              14
+#define I2C_RTC_NUM                 1
+
+#define I2C_MASTER_FREQ_HZ          100000
+#define I2C_MASTER_TX_BUF_DISABLE   0
+#define I2C_MASTER_RX_BUF_DISABLE   0
+
+#define DS1307_ADDR                 0x68
+#define EEPROM_ADDR                 0x50
+#define EEPROM_MAGIC_BYTE           0xAB
+
+#define PIN_NUM_SD_CS               15
+#define PIN_NUM_SD_MISO             25
+#define PIN_NUM_SD_MOSI             26
+#define PIN_NUM_SD_CLK              27
+
+static sdmmc_card_t *sd_card = NULL;
 
 /* Configuracion Wi-Fi */
 #define WIFI_SSID "Alejandro"
@@ -185,6 +213,187 @@ void hexStringToBytes(char *hex, uint8_t *bytes)
     }
 }
 
+/* ── Funciones Hardware (I2C, RTC, EEPROM, SD) ────────────────── */
+static esp_err_t i2c_master_init(void) {
+    // I2C 0 para EEPROM
+    i2c_config_t conf_eeprom = {
+        .mode = I2C_MODE_MASTER,
+        .sda_io_num = I2C_EEPROM_SDA_IO,
+        .sda_pullup_en = GPIO_PULLUP_ENABLE,
+        .scl_io_num = I2C_EEPROM_SCL_IO,
+        .scl_pullup_en = GPIO_PULLUP_ENABLE,
+        .master.clk_speed = I2C_MASTER_FREQ_HZ,
+    };
+    esp_err_t err = i2c_param_config(I2C_EEPROM_NUM, &conf_eeprom);
+    if (err != ESP_OK) return err;
+    err = i2c_driver_install(I2C_EEPROM_NUM, conf_eeprom.mode, I2C_MASTER_RX_BUF_DISABLE, I2C_MASTER_TX_BUF_DISABLE, 0);
+    if (err != ESP_OK) return err;
+
+    // I2C 1 para RTC
+    i2c_config_t conf_rtc = {
+        .mode = I2C_MODE_MASTER,
+        .sda_io_num = I2C_RTC_SDA_IO,
+        .sda_pullup_en = GPIO_PULLUP_ENABLE,
+        .scl_io_num = I2C_RTC_SCL_IO,
+        .scl_pullup_en = GPIO_PULLUP_ENABLE,
+        .master.clk_speed = I2C_MASTER_FREQ_HZ,
+    };
+    err = i2c_param_config(I2C_RTC_NUM, &conf_rtc);
+    if (err != ESP_OK) return err;
+    return i2c_driver_install(I2C_RTC_NUM, conf_rtc.mode, I2C_MASTER_RX_BUF_DISABLE, I2C_MASTER_TX_BUF_DISABLE, 0);
+}
+
+static uint8_t bcd2dec(uint8_t val) { return ((val / 16 * 10) + (val % 16)); }
+static uint8_t dec2bcd(uint8_t val) { return ((val / 10 * 16) + (val % 10)); }
+
+void rtc_get_time(struct tm *timeinfo) {
+    uint8_t data[7];
+    i2c_cmd_handle_t cmd = i2c_cmd_link_create();
+    i2c_master_start(cmd);
+    i2c_master_write_byte(cmd, (DS1307_ADDR << 1) | I2C_MASTER_WRITE, true);
+    i2c_master_write_byte(cmd, 0x00, true);
+    i2c_master_start(cmd);
+    i2c_master_write_byte(cmd, (DS1307_ADDR << 1) | I2C_MASTER_READ, true);
+    i2c_master_read(cmd, data, 6, I2C_MASTER_ACK);
+    i2c_master_read_byte(cmd, data + 6, I2C_MASTER_NACK);
+    i2c_master_stop(cmd);
+    i2c_master_cmd_begin(I2C_RTC_NUM, cmd, 1000 / portTICK_PERIOD_MS);
+    i2c_cmd_link_delete(cmd);
+
+    timeinfo->tm_sec = bcd2dec(data[0] & 0x7F);
+    timeinfo->tm_min = bcd2dec(data[1]);
+    timeinfo->tm_hour = bcd2dec(data[2] & 0x3F);
+    timeinfo->tm_wday = bcd2dec(data[3]) - 1;
+    timeinfo->tm_mday = bcd2dec(data[4]);
+    timeinfo->tm_mon  = bcd2dec(data[5]) - 1;
+    timeinfo->tm_year = bcd2dec(data[6]) + 100;
+}
+
+void rtc_set_time(struct tm *timeinfo) {
+    i2c_cmd_handle_t cmd = i2c_cmd_link_create();
+    i2c_master_start(cmd);
+    i2c_master_write_byte(cmd, (DS1307_ADDR << 1) | I2C_MASTER_WRITE, true);
+    i2c_master_write_byte(cmd, 0x00, true);
+    i2c_master_write_byte(cmd, dec2bcd(timeinfo->tm_sec), true);
+    i2c_master_write_byte(cmd, dec2bcd(timeinfo->tm_min), true);
+    i2c_master_write_byte(cmd, dec2bcd(timeinfo->tm_hour), true);
+    i2c_master_write_byte(cmd, dec2bcd(timeinfo->tm_wday + 1), true);
+    i2c_master_write_byte(cmd, dec2bcd(timeinfo->tm_mday), true);
+    i2c_master_write_byte(cmd, dec2bcd(timeinfo->tm_mon + 1), true);
+    i2c_master_write_byte(cmd, dec2bcd(timeinfo->tm_year - 100), true);
+    i2c_master_stop(cmd);
+    i2c_master_cmd_begin(I2C_RTC_NUM, cmd, 1000 / portTICK_PERIOD_MS);
+    i2c_cmd_link_delete(cmd);
+}
+
+void sync_system_from_rtc() {
+    struct tm timeinfo = {0};
+    rtc_get_time(&timeinfo);
+    if (timeinfo.tm_year > 100) {
+        time_t t = mktime(&timeinfo);
+        struct timeval now = { .tv_sec = t, .tv_usec = 0 };
+        settimeofday(&now, NULL);
+        ESP_LOGI("RTC", "Sistema sincronizado con RTC: %02d/%02d/%04d %02d:%02d:%02d", 
+            timeinfo.tm_mday, timeinfo.tm_mon + 1, timeinfo.tm_year + 1900, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+    }
+}
+
+void time_sync_notification_cb(struct timeval *tv) {
+    time_t now = 0;
+    struct tm timeinfo = {0};
+    time(&now);
+    localtime_r(&now, &timeinfo);
+    rtc_set_time(&timeinfo);
+    ESP_LOGI("RTC", "Hora guardada en RTC desde internet.");
+}
+
+esp_err_t eeprom_write(uint16_t mem_address, uint8_t *data, size_t size) {
+    for (size_t i = 0; i < size; i++) {
+        i2c_cmd_handle_t cmd = i2c_cmd_link_create();
+        i2c_master_start(cmd);
+        i2c_master_write_byte(cmd, (EEPROM_ADDR << 1) | I2C_MASTER_WRITE, true);
+        i2c_master_write_byte(cmd, (mem_address + i) >> 8, true);
+        i2c_master_write_byte(cmd, (mem_address + i) & 0xFF, true);
+        i2c_master_write_byte(cmd, data[i], true);
+        i2c_master_stop(cmd);
+        esp_err_t ret = i2c_master_cmd_begin(I2C_EEPROM_NUM, cmd, 1000 / portTICK_PERIOD_MS);
+        i2c_cmd_link_delete(cmd);
+        if (ret != ESP_OK) return ret;
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+    return ESP_OK;
+}
+
+esp_err_t eeprom_read(uint16_t mem_address, uint8_t *data, size_t size) {
+    i2c_cmd_handle_t cmd = i2c_cmd_link_create();
+    i2c_master_start(cmd);
+    i2c_master_write_byte(cmd, (EEPROM_ADDR << 1) | I2C_MASTER_WRITE, true);
+    i2c_master_write_byte(cmd, mem_address >> 8, true);
+    i2c_master_write_byte(cmd, mem_address & 0xFF, true);
+    i2c_master_start(cmd);
+    i2c_master_write_byte(cmd, (EEPROM_ADDR << 1) | I2C_MASTER_READ, true);
+    if (size > 1) i2c_master_read(cmd, data, size - 1, I2C_MASTER_ACK);
+    i2c_master_read_byte(cmd, data + size - 1, I2C_MASTER_NACK);
+    i2c_master_stop(cmd);
+    esp_err_t ret = i2c_master_cmd_begin(I2C_EEPROM_NUM, cmd, 1000 / portTICK_PERIOD_MS);
+    i2c_cmd_link_delete(cmd);
+    return ret;
+}
+
+void save_tarjetas_to_eeprom() {
+    uint8_t meta[2] = {EEPROM_MAGIC_BYTE, total_tarjetas};
+    eeprom_write(0x0000, meta, 2);
+    for (int i = 0; i < total_tarjetas; i++) {
+        eeprom_write(0x0002 + (i * 4), tarjetas[i], 4);
+    }
+    ESP_LOGI("EEPROM", "Guardadas %d tarjetas", total_tarjetas);
+}
+
+void load_tarjetas_from_eeprom() {
+    uint8_t meta[2];
+    if (eeprom_read(0x0000, meta, 2) == ESP_OK && meta[0] == EEPROM_MAGIC_BYTE) {
+        total_tarjetas = meta[1] > MAX_TARJETAS ? MAX_TARJETAS : meta[1];
+        for (int i = 0; i < total_tarjetas; i++) {
+            eeprom_read(0x0002 + (i * 4), tarjetas[i], 4);
+        }
+        ESP_LOGI("EEPROM", "Cargadas %d tarjetas", total_tarjetas);
+    } else {
+        ESP_LOGW("EEPROM", "Memoria vacia o error al leer");
+    }
+}
+
+void init_sd_card() {
+    esp_vfs_fat_sdmmc_mount_config_t mount_config = {
+        .format_if_mount_failed = true,
+        .max_files = 5,
+        .allocation_unit_size = 16 * 1024
+    };
+    sdmmc_host_t host = SDSPI_HOST_DEFAULT();
+    host.slot = SPI3_HOST;
+    sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
+    slot_config.gpio_cs = PIN_NUM_SD_CS;
+    slot_config.host_id = SPI3_HOST;
+    esp_err_t ret = esp_vfs_fat_sdspi_mount("/sdcard", &host, &slot_config, &mount_config, &sd_card);
+    if (ret != ESP_OK) {
+        ESP_LOGE("SD", "Fallo al inicializar la tarjeta SD (%s)", esp_err_to_name(ret));
+    } else {
+        ESP_LOGI("SD", "Tarjeta SD montada exitosamente");
+    }
+}
+
+void log_to_sd(const char *uid_str, bool acces_granted) {
+    if (sd_card == NULL) return;
+    FILE *f = fopen("/sdcard/historial.txt", "a");
+    if (f != NULL) {
+        time_t now; time(&now);
+        struct tm timeinfo; localtime_r(&now, &timeinfo);
+        char time_str[64];
+        strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", &timeinfo);
+        fprintf(f, "[%s] UID: %s | Acceso: %s\n", time_str, uid_str, acces_granted ? "PERMITIDO" : "DENEGADO");
+        fclose(f);
+    }
+}
+
 /* ── Sistema de Logs Offline en Memoria Caché ────────────────── */
 #define MAX_OFFLINE_LOGS 100
 
@@ -284,6 +493,7 @@ void rfid_task(void *arg)
             
             /* Encender LED verde si la tarjeta está en memoria */
             if (tarjeta_existe(uid)) {
+                log_to_sd(uid_str, true);
                 gpio_set_level(PIN_LED_VERDE, 1);
                 gpio_set_level(PIN_LED_AZUL, 0);
                 if (!send_log_wifi(uid_str, current_time)) {
@@ -294,6 +504,7 @@ void rfid_task(void *arg)
                 vTaskDelay(pdMS_TO_TICKS(4000));
                 gpio_set_level(PIN_LED_AZUL, 1);
             } else {
+                log_to_sd(uid_str, false);
                 gpio_set_level(PIN_LED_ROJO, 1);
                 if (!send_log_wifi(uid_str, current_time)) {
                     enqueue_offline_log(uid_str, current_time);
@@ -344,6 +555,7 @@ void http_sync_task(void *arg)
                         }
                     }
                     cJSON_Delete(json);
+                    save_tarjetas_to_eeprom();
                     ESP_LOGI("HTTP", "Sincronizacion completada. Tarjetas en memoria: %d", total_tarjetas);
                 } else {
                     ESP_LOGE("HTTP", "Error parseando JSON. Posiblemente desconectado de BD.");
@@ -366,6 +578,7 @@ void initialize_sntp(void)
     ESP_LOGI("NTP", "Inicializando SNTP");
     esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
     esp_sntp_setservername(0, "pool.ntp.org");
+    esp_sntp_set_time_sync_notification_cb(time_sync_notification_cb);
     esp_sntp_init();
     
     // Configurar Zona Horaria a México Central (CST/CDT)
@@ -445,6 +658,10 @@ void app_main(void)
     spi_device_interface_config_t devcfg = {.clock_speed_hz = 1000000, .mode = 0, .spics_io_num = PIN_NUM_CS, .queue_size = 1};
     spi_bus_add_device(SPI_HOST, &devcfg, &spi);
 
+    // Inicializar un segundo bus SPI independiente para la tarjeta SD
+    spi_bus_config_t buscfg_sd = {.miso_io_num = PIN_NUM_SD_MISO, .mosi_io_num = PIN_NUM_SD_MOSI, .sclk_io_num = PIN_NUM_SD_CLK, .quadwp_io_num = -1, .quadhd_io_num = -1};
+    spi_bus_initialize(SPI3_HOST, &buscfg_sd, SPI_DMA_CH_AUTO);
+
     gpio_set_direction(PIN_NUM_RST, GPIO_MODE_OUTPUT);
     gpio_set_level(PIN_NUM_RST, 1);
     
@@ -457,6 +674,14 @@ void app_main(void)
     gpio_reset_pin(PIN_LED_AZUL);
     gpio_set_direction(PIN_LED_AZUL, GPIO_MODE_OUTPUT);
     gpio_set_level(PIN_LED_AZUL, 1);
+
+    // Inicializar I2C (EEPROM y RTC)
+    i2c_master_init();
+    sync_system_from_rtc();
+    load_tarjetas_from_eeprom();
+
+    // Inicializar Micro SD
+    init_sd_card();
 
     rc522_init();
     

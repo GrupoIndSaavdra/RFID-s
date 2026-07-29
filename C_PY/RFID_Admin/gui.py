@@ -379,7 +379,7 @@ class AdminGUI(tk.Tk):
         btn_logout = tk.Button(self.frame_top, text="Cerrar Sesión", bg="#A00000", fg="#FFFFFF", font=("Segoe UI", 9, "bold"), bd=0, activebackground="#D00000", activeforeground="#FFFFFF", command=self.cerrar_sesion)
         btn_logout.pack(side=tk.RIGHT, padx=20, pady=15)
 
-        self.lbl_estado_serial = tk.Label(self.frame_top, text="USB Lector: Buscando...", fg="#6c757d", bg="#FFFFFF", font=("Segoe UI", 9, "bold"))
+        self.lbl_estado_serial = tk.Label(self.frame_top, text="Lector: Buscando...", fg="#6c757d", bg="#FFFFFF", font=("Segoe UI", 9, "bold"))
         self.lbl_estado_serial.pack(side=tk.RIGHT, padx=15)
         
         self.menu_visible = True
@@ -1462,12 +1462,19 @@ class AdminGUI(tk.Tk):
         if self.serial_conn and self.serial_conn.is_open:
             return
         try:
-            self.serial_conn = serial.Serial(PUERTO, BAUDRATE, timeout=1)
-            self.lbl_estado_serial.config(text=f"🟢 USB Lector Conectado ({PUERTO})", fg="#0A8504")
+            import serial.tools.list_ports
+            puerto_encontrado = PUERTO
+            for p in serial.tools.list_ports.comports():
+                if "CH340" in p.description or "CP210" in p.description:
+                    puerto_encontrado = p.device
+                    break
+                    
+            self.serial_conn = serial.Serial(puerto_encontrado, BAUDRATE, timeout=1)
+            self.lbl_estado_serial.config(text="🟢 Lector en línea", fg="#0A8504")
             self.hilo_serial = threading.Thread(target=self.leer_serial, daemon=True)
             self.hilo_serial.start()
         except:
-            self.lbl_estado_serial.config(text="🔴 USB Lector Desconectado", fg="#9C0303")
+            self.lbl_estado_serial.config(text="🔴 Lector fuera de línea", fg="#9C0303")
             if self.running:
                 self.after(5000, self.conectar_serial)
 
@@ -1490,7 +1497,7 @@ class AdminGUI(tk.Tk):
                 try: self.serial_conn.close()
                 except: pass
                 self.serial_conn = None
-            self.lbl_estado_serial.config(text="🔴 USB Lector Desconectado", fg="#9C0303")
+            self.lbl_estado_serial.config(text="🔴 Lector fuera de línea", fg="#9C0303")
             self.after(5000, self.conectar_serial)
 
     def sincronizar_esp32_inmediato(self):
