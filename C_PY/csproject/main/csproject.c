@@ -363,12 +363,18 @@ void load_tarjetas_from_eeprom() {
 }
 
 void init_sd_card() {
+    gpio_set_pull_mode(PIN_NUM_SD_MISO, GPIO_PULLUP_ONLY);
+    gpio_set_pull_mode(PIN_NUM_SD_MOSI, GPIO_PULLUP_ONLY);
+    gpio_set_pull_mode(PIN_NUM_SD_CS, GPIO_PULLUP_ONLY);
+    gpio_set_pull_mode(PIN_NUM_SD_CLK, GPIO_PULLUP_ONLY);
+
     esp_vfs_fat_sdmmc_mount_config_t mount_config = {
         .format_if_mount_failed = true,
         .max_files = 5,
         .allocation_unit_size = 16 * 1024
     };
     sdmmc_host_t host = SDSPI_HOST_DEFAULT();
+    host.max_freq_khz = 5000;
     host.slot = SPI3_HOST;
     sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
     slot_config.gpio_cs = PIN_NUM_SD_CS;
@@ -581,8 +587,8 @@ void initialize_sntp(void)
     esp_sntp_set_time_sync_notification_cb(time_sync_notification_cb);
     esp_sntp_init();
     
-    // Configurar Zona Horaria a México Central (CST/CDT)
-    setenv("TZ", "CST6CDT,M4.1.0,M10.5.0", 1);
+    // Configurar Zona Horaria a México Central (Sin horario de verano)
+    setenv("TZ", "CST6", 1);
     tzset();
 }
 
@@ -649,9 +655,6 @@ void app_main(void)
     }
     ESP_ERROR_CHECK(ret);
 
-    // Inicializar Wi-Fi
-    wifi_init_sta();
-
     spi_bus_config_t buscfg = {.miso_io_num = PIN_NUM_MISO, .mosi_io_num = PIN_NUM_MOSI, .sclk_io_num = PIN_NUM_CLK, .quadwp_io_num = -1, .quadhd_io_num = -1};
     spi_bus_initialize(SPI_HOST, &buscfg, SPI_DMA_CH_AUTO); 
 
@@ -680,7 +683,7 @@ void app_main(void)
     sync_system_from_rtc();
     load_tarjetas_from_eeprom();
 
-    // Inicializar Micro SD
+    // Inicializar Micro SD ANTES del Wi-Fi para evitar picos de consumo
     init_sd_card();
 
     rc522_init();
@@ -693,6 +696,9 @@ void app_main(void)
     } else {
         ESP_LOGI("SPI", "ÉXITO: RC522 detectado y listo para leer.");
     }
+
+    // Inicializar Wi-Fi al final
+    wifi_init_sta();
 
     xTaskCreate(rfid_task, "rfid_task", 4096, NULL, 5, NULL);
     xTaskCreate(http_sync_task, "http_sync_task", 6144, NULL, 5, NULL);
