@@ -1027,6 +1027,12 @@ class AdminGUI(tk.Tk):
         
         ico_hourglass = self.cargar_icono("hourglass", 24)
         ttk.Button(frame_busqueda, text=" Recargar", image=ico_hourglass, compound=tk.LEFT, command=self.cargar_tabla_usuarios).pack(side=tk.RIGHT, padx=5)
+        
+        btn_nuevo_rol = tk.Button(frame_busqueda, text="+ NUEVO ROL", bg="#0052cc", fg="#FFFFFF", font=("Poppins", 10, "bold"), bd=0, activebackground="#003d99", activeforeground="#FFFFFF", command=self.mostrar_modal_nuevo_rol)
+        btn_nuevo_rol.pack(side=tk.RIGHT, padx=5, ipady=3, ipadx=10)
+        
+        btn_masiva = tk.Button(frame_busqueda, text="⚡ ASIGNACIÓN MASIVA", bg="#FF9800", fg="#FFFFFF", font=("Poppins", 10, "bold"), bd=0, activebackground="#F57C00", activeforeground="#FFFFFF", command=self.mostrar_modal_asignacion_masiva)
+        btn_masiva.pack(side=tk.RIGHT, padx=15, ipady=3, ipadx=10)
 
         # Dropdown flotante (sin contenedor que empuje)
         frame_filtro = tk.Frame(self.frame_main, bg="#F0F0F0", height=0)
@@ -1065,20 +1071,22 @@ class AdminGUI(tk.Tk):
         frame_tabla = tk.Frame(self.frame_main, bg="#FFFFFF")
         frame_tabla.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
         
-        columnas = ("uid", "nombre", "areas", "fecha", "modificacion", "acciones")
+        columnas = ("uid", "nombre", "rol", "areas", "fecha", "modificacion", "acciones")
         self.tree_usuarios = ttk.Treeview(frame_tabla, columns=columnas, show="headings")
         self.tree_usuarios.heading("uid", text="UID TARJETA")
         self.tree_usuarios.heading("nombre", text="NOMBRE EMPLEADO")
+        self.tree_usuarios.heading("rol", text="PUESTO / ROL")
         self.tree_usuarios.heading("areas", text="ÁREAS AUTORIZADAS")
         self.tree_usuarios.heading("fecha", text="FECHA DE REGISTRO")
         self.tree_usuarios.heading("modificacion", text="ÚLTIMA MODIFICACIÓN")
         self.tree_usuarios.heading("acciones", text="ACCIONES")
         
-        self.tree_usuarios.column("uid", width=120, anchor="center")
-        self.tree_usuarios.column("nombre", width=250, anchor="center")
-        self.tree_usuarios.column("areas", width=350, anchor="center")
+        self.tree_usuarios.column("uid", width=100, anchor="center")
+        self.tree_usuarios.column("nombre", width=180, anchor="center")
+        self.tree_usuarios.column("rol", width=150, anchor="center")
+        self.tree_usuarios.column("areas", width=250, anchor="center")
         self.tree_usuarios.column("fecha", width=150, anchor="center")
-        self.tree_usuarios.column("modificacion", width=280, anchor="center")
+        self.tree_usuarios.column("modificacion", width=150, anchor="center")
         self.tree_usuarios.column("acciones", width=120, anchor="center")
 
         self.tree_usuarios.tag_configure("hover", background="#0A8504", foreground="#FFFFFF")
@@ -1098,6 +1106,62 @@ class AdminGUI(tk.Tk):
         self.tree_usuarios.bind("<ButtonRelease-1>", self.on_click_tree_usuarios)
         self.tree_usuarios.bind("<Button-3>", self.on_right_click_tree_usuarios)
         
+        self.cargar_tabla_usuarios()
+        
+    def mostrar_modal_asignacion_masiva(self):
+        if not hasattr(self, 'tree_usuarios'): return
+        
+        roles = usuarios.obtener_roles_unicos()
+        if not roles:
+            return messagebox.showinfo("Información", "No hay roles registrados en el sistema todavía.")
+            
+        dlg = tk.Toplevel(self)
+        dlg.title("Asignación Masiva por Rol")
+        dlg.geometry("400x300")
+        dlg.configure(bg="#FFFFFF")
+        dlg.transient(self)
+        dlg.grab_set()
+        
+        tk.Label(dlg, text="⚡ Asignación Masiva", font=("Poppins", 14, "bold"), bg="#FFFFFF", fg="#FF9800").pack(pady=(20, 10))
+        tk.Label(dlg, text="Selecciona el rol que recibirá acceso:", bg="#FFFFFF", fg="#333333", font=("Poppins", 10)).pack(anchor="w", padx=30)
+        
+        cb_roles = ttk.Combobox(dlg, values=roles, font=("Poppins", 10), state="readonly")
+        cb_roles.pack(fill=tk.X, padx=30, pady=5)
+        if roles: cb_roles.current(0)
+        
+        tk.Label(dlg, text="Selecciona el área a asignar:", bg="#FFFFFF", fg="#333333", font=("Poppins", 10)).pack(anchor="w", padx=30, pady=(15, 0))
+        
+        areas_list = [f"{k} - {v}" for k, v in AREAS.items()]
+        cb_areas = ttk.Combobox(dlg, values=areas_list, font=("Poppins", 10), state="readonly")
+        cb_areas.pack(fill=tk.X, padx=30, pady=5)
+        if areas_list: cb_areas.current(0)
+        
+        def on_asignar():
+            rol = cb_roles.get()
+            area_sel = cb_areas.get()
+            if not rol or not area_sel: return
+            
+            area_id = area_sel.split(" - ")[0]
+            
+            if messagebox.askyesno("Confirmar", f"¿Dar acceso al área '{area_sel}' a TODOS los '{rol}'?"):
+                afectados = usuarios.asignar_area_masiva(rol, area_id)
+                messagebox.showinfo("Éxito", f"Se actualizó el acceso de {afectados} empleados con el rol '{rol}'.")
+                self.sincronizar_esp32_inmediato()
+                self.cargar_tabla_usuarios()
+                dlg.destroy()
+                
+        tk.Button(dlg, text="ASIGNAR ÁREA", bg="#0A8504", fg="#FFFFFF", font=("Poppins", 10, "bold"), bd=0, activebackground="#086603", activeforeground="#FFFFFF", command=on_asignar).pack(fill=tk.X, padx=30, pady=(20, 10), ipady=5)
+
+    def mostrar_modal_nuevo_rol(self):
+        import tkinter.simpledialog as sd
+        nuevo_rol = sd.askstring("Nuevo Rol", "Escribe el nombre del nuevo rol (ej. Gerente, Limpieza):", parent=self)
+        if nuevo_rol and nuevo_rol.strip():
+            nombre = nuevo_rol.strip()
+            if usuarios.registrar_rol(nombre):
+                messagebox.showinfo("Éxito", f"Rol '{nombre}' registrado correctamente.")
+            else:
+                messagebox.showerror("Error", "No se pudo registrar el rol (tal vez ya existe).")
+
         self.cargar_tabla_usuarios()
 
     def cargar_tabla_usuarios(self):
@@ -1119,14 +1183,15 @@ class AdminGUI(tk.Tk):
             area_id_filtro = area_filtro.split(" - ")[0]
         
         for t in usuarios.listar_usuarios():
-            if t[4]: # activa
+            if t[5]: # activa (now t[5] because rol is t[2])
                 uid = t[0]
                 nombre = t[1]
-                areas_raw = t[2]
+                rol = t[2] if t[2] else "Empleado"
+                areas_raw = t[3]
                 
                 # Filtro por texto
                 if texto_busqueda:
-                    if texto_busqueda not in uid.lower() and texto_busqueda not in nombre.lower():
+                    if texto_busqueda not in uid.lower() and texto_busqueda not in nombre.lower() and texto_busqueda not in rol.lower():
                         continue
                         
                 # Filtro por área
@@ -1137,13 +1202,13 @@ class AdminGUI(tk.Tk):
                 
                 nombres_areas = permisos.areas_a_nombres(areas_raw)
                 
-                fecha_mod = str(t[5])[:16] if len(t) > 5 and t[5] else str(t[3])[:16]
+                fecha_mod = str(t[6])[:16] if len(t) > 6 and t[6] else str(t[4])[:16]
                 
-                self.tree_usuarios.insert("", tk.END, values=(uid, nombre, nombres_areas, str(t[3])[:16], fecha_mod, ""))
+                self.tree_usuarios.insert("", tk.END, values=(uid, nombre, rol, nombres_areas, str(t[4])[:16], fecha_mod, ""))
                 
         self.auto_ajustar_columnas(self.tree_usuarios)
 
-    def mostrar_vista_formulario_usuario(self, uid_editar=None, nombre_editar="", areas_editar=""):
+    def mostrar_vista_formulario_usuario(self, uid_editar=None, nombre_editar="", rol_editar="", areas_editar=""):
         self.limpiar_vista()
         self.vista_actual = "formulario_usuario"
         self.lbl_titulo.config(text="EDITAR USUARIO" if uid_editar else "REGISTRAR USUARIO")
@@ -1185,6 +1250,17 @@ class AdminGUI(tk.Tk):
         ent_nombre.pack(fill=tk.X, padx=30, pady=5, ipady=5)
         if nombre_editar: ent_nombre.insert(0, nombre_editar)
 
+        tk.Label(top, text="Puesto / Rol del Empleado:", bg="#FFFFFF", fg="#000000", font=("Poppins", 10)).pack(anchor="w", padx=30, pady=(15,0))
+        roles_comunes = usuarios.obtener_roles_unicos()
+        if not roles_comunes:
+            roles_comunes = ["Empleado"]
+        ent_rol = ttk.Combobox(top, values=roles_comunes, font=("Poppins", 12), state="readonly")
+        ent_rol.pack(fill=tk.X, padx=30, pady=5)
+        if rol_editar and rol_editar in roles_comunes: 
+            ent_rol.set(rol_editar)
+        else:
+            ent_rol.current(0)
+
         tk.Label(top, text="Permisos de Áreas:", bg="#FFFFFF", fg="#000000", font=("Poppins", 10, "bold")).pack(anchor="w", padx=30, pady=(20, 5))
         
         btn_areas = tk.Button(top, text="Desplegar Áreas ▼", bg="#033966", fg="#FFFFFF", font=("Poppins", 10, "bold"), bd=0, activebackground="#0A8504", activeforeground="#FFFFFF")
@@ -1222,12 +1298,15 @@ class AdminGUI(tk.Tk):
 
         def guardar():
             uid, nombre = ent_uid.get().strip().upper(), ent_nombre.get().strip()
+            rol = ent_rol.get().strip()
+            if not rol: rol = "Empleado"
+            
             areas_str = ",".join([k for k, v in var_areas.items() if v.get()])
             
             if not uid or not nombre: return messagebox.showerror("Error", "UID y Nombre son obligatorios.")
             if not areas_str: return messagebox.showerror("Error", "Debes seleccionar al menos un área.")
 
-            if usuarios.registrar_usuario(uid, nombre, areas_str):
+            if usuarios.registrar_usuario(uid, nombre, rol, areas_str):
                 messagebox.showinfo("Éxito", "Usuario guardado correctamente.")
                 self.sincronizar_esp32_inmediato()
                 self.uid_escaneado_reciente = None
@@ -1244,7 +1323,7 @@ class AdminGUI(tk.Tk):
         uid, nombre = self.tree_usuarios.item(seleccion[0], "values")[0:2]
         row = usuarios.buscar_usuario(uid)
         if row: 
-            self.mostrar_vista_formulario_usuario(uid_editar=uid, nombre_editar=nombre, areas_editar=row[2])
+            self.mostrar_vista_formulario_usuario(uid_editar=uid, nombre_editar=nombre, rol_editar=row[2], areas_editar=row[3])
         else:
             messagebox.showerror("Error", "No se encontró el usuario en la base de datos.")
 
