@@ -480,6 +480,22 @@ class AdminGUI(tk.Tk):
         if not hasattr(self, 'frame_lista_puertas') or not self.frame_lista_puertas.winfo_exists():
             return
             
+        import threading
+        
+        def fetch_task():
+            try:
+                import puertas
+                lista_puertas = puertas.listar_puertas()
+                self.after(0, lambda: self._apply_puertas_ui(lista_puertas))
+            except Exception as e:
+                print(f"Error bg portas: {e}")
+
+        threading.Thread(target=fetch_task, daemon=True).start()
+
+    def _apply_puertas_ui(self, lista_puertas):
+        if not hasattr(self, 'frame_lista_puertas') or not self.frame_lista_puertas.winfo_exists():
+            return
+            
         if not hasattr(self, 'estado_anterior_puertas'):
             self.estado_anterior_puertas = {}
             
@@ -492,9 +508,7 @@ class AdminGUI(tk.Tk):
             del self.widgets_puertas[m]
             
         try:
-            import puertas
             from config import AREAS
-            lista_puertas = puertas.listar_puertas()
             macs_actuales = set()
             
             if not lista_puertas:
@@ -1575,22 +1589,28 @@ class AdminGUI(tk.Tk):
             
         if self.serial_conn and self.serial_conn.is_open:
             return
-        try:
-            import serial.tools.list_ports
-            puerto_encontrado = PUERTO
-            for p in serial.tools.list_ports.comports():
-                if "CH340" in p.description or "CP210" in p.description:
-                    puerto_encontrado = p.device
-                    break
-                    
-            self.serial_conn = serial.Serial(puerto_encontrado, BAUDRATE, timeout=1)
-            self.lbl_estado_serial.config(text="🟢 Lector en línea", fg="#0A8504")
-            self.hilo_serial = threading.Thread(target=self.leer_serial, daemon=True)
-            self.hilo_serial.start()
-        except:
-            self.lbl_estado_serial.config(text="🔴 Lector fuera de línea", fg="#9C0303")
-            if self.running:
-                self.after(5000, self.conectar_serial)
+            
+        def _connect_task():
+            try:
+                import serial
+                conn = serial.Serial(PUERTO, BAUDRATE, timeout=1)
+                self.after(0, lambda: self._on_serial_connected(conn))
+            except:
+                self.after(0, self._on_serial_failed)
+                
+        import threading
+        threading.Thread(target=_connect_task, daemon=True).start()
+        
+    def _on_serial_connected(self, conn):
+        self.serial_conn = conn
+        self.lbl_estado_serial.config(text="🟢 Lector en línea", fg="#0A8504")
+        self.hilo_serial = threading.Thread(target=self.leer_serial, daemon=True)
+        self.hilo_serial.start()
+        
+    def _on_serial_failed(self):
+        self.lbl_estado_serial.config(text="🔴 Lector fuera de línea", fg="#9C0303")
+        if getattr(self, 'running', False):
+            self.after(5000, self.conectar_serial)
 
     def leer_serial(self):
         while self.running and self.serial_conn and self.serial_conn.is_open:
