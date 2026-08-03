@@ -24,13 +24,17 @@ def registrar_puerta(mac: str, nombre: str, area_id: str, tipo: str = "Entrada")
         conn.close()
 
 def listar_puertas() -> list:
-    """Obtiene la lista de todos los ESP32 registrados."""
+    """Obtiene la lista de todos los ESP32 registrados y su estado de actividad."""
     conn = conectar_db()
     if not conn: return []
     
     try:
         cur = conn.cursor()
-        cur.execute("SELECT mac_address, nombre, area_id, tipo FROM puertas ORDER BY nombre")
+        cur.execute("""
+            SELECT mac_address, nombre, area_id, tipo,
+                   IF(ultima_conexion IS NOT NULL AND TIMESTAMPDIFF(SECOND, ultima_conexion, NOW()) <= 15, 1, 0) as activa
+            FROM puertas ORDER BY nombre
+        """)
         return cur.fetchall()
     except Exception as e:
         print(f"Error listando puertas: {e}")

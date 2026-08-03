@@ -63,8 +63,19 @@ import puertas
 class AdminGUI(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("Sistema RFID - Panel de Administración")
+        self.title("Grupo Industrial Saavedra")
         self.geometry("950x700")
+        
+        try:
+            import os
+            import ctypes
+            myappid = 'csproject.rfid_admin.gui.1.0'
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+            icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Imagenes", "G.ico")
+            if os.path.exists(icon_path):
+                self.iconbitmap(icon_path)
+        except Exception as e:
+            print("Error cargando ícono de ventana:", e)
         
         # Tema Moderno Dashboard
         style = ttk.Style(self)
@@ -112,13 +123,16 @@ class AdminGUI(tk.Tk):
             "fondo_inicio": os.path.join(base_dir, "Imagenes", "Fondo de inicio.jpg"),
             "fondo_usuarios": os.path.join(base_dir, "Imagenes", "Fondo de usuarios.png"),
             "logo": os.path.join(base_dir, "Imagenes", "Logo.png"),
-            "buscar": os.path.join(base_dir, "Imagenes", "Buscar.png")
+            "buscar": os.path.join(base_dir, "Imagenes", "Buscar.png"),
+            "activar": os.path.join(base_dir, "Imagenes", "Activar.png"),
+            "eliminar": os.path.join(base_dir, "Imagenes", "Eliminar.png")
         }
         self.iconos = {}
         
         self.crear_interfaz_principal()
         self.conectar_serial()
         self.mantener_frame_acciones()
+        self.loop_actualizar_puertas()
 
     def cargar_icono(self, name, size=24):
         key = f"{name}_{size}x{size}"
@@ -429,6 +443,7 @@ class AdminGUI(tk.Tk):
         
         btn_add_p = ttk.Button(self.frame_sub_puertas, text="  Agregar", style="SubMenu.TButton", command=self.mostrar_vista_formulario_puerta)
         btn_add_p.pack(fill=tk.X, pady=2)
+
             
         # Botón principal Visor
         self.btn_main_visor = ttk.Button(self.frame_sidebar, text="  Visor", image=self.cargar_icono("buscar", 16), compound=tk.LEFT, style="Menu.TButton", command=self.toggle_submenu_visor)
@@ -446,40 +461,132 @@ class AdminGUI(tk.Tk):
             btn_v = ttk.Button(self.frame_sub_visor, text=f"  {a_name}", style="SubMenu.TButton", command=lambda an=a_name: self.mostrar_vista_visor(an))
             btn_v.pack(fill=tk.X, pady=2)
             
-        # Todos pueden agregar área
-        btn_add_a = ttk.Button(self.frame_sidebar, text="  Agregar Área", image=self.cargar_icono("accept", 16), compound=tk.LEFT, style="Menu.TButton", command=self.agregar_area_principal)
-        btn_add_a.pack(fill=tk.X, pady=2)
+        # Botón Activar en el sidebar principal
+        btn_activar = ttk.Button(self.frame_sidebar, text="  Activar puerta", image=self.cargar_icono("activar", 16), compound=tk.LEFT, style="Menu.TButton", command=self.mostrar_vista_flashear_esp32)
+        btn_activar.pack(fill=tk.X, pady=5)
+        
+        btn_formatear = ttk.Button(self.frame_sidebar, text="  Desactivar puerta", image=self.cargar_icono("eliminar", 16), compound=tk.LEFT, style="Menu.TButton", command=self.mostrar_vista_formatear_esp32)
+        btn_formatear.pack(fill=tk.X, pady=5)
 
         # Sección Lectores Activos
         tk.Frame(self.frame_sidebar, bg="#1E1F22", height=1).pack(fill=tk.X, pady=(20, 10))
         ttk.Label(self.frame_sidebar, text="PUERTAS", style="Sidebar.TLabel").pack(anchor="w", padx=20, pady=5)
         
-        # Puertas activas desde la BD
+        self.frame_lista_puertas = tk.Frame(self.frame_sidebar, bg="#2B2D30")
+        self.frame_lista_puertas.pack(fill=tk.BOTH, expand=True)
+        self.render_lista_puertas_sidebar()
+
+    def render_lista_puertas_sidebar(self):
+        if not hasattr(self, 'frame_lista_puertas') or not self.frame_lista_puertas.winfo_exists():
+            return
+            
+        if not hasattr(self, 'estado_anterior_puertas'):
+            self.estado_anterior_puertas = {}
+            
+        if not hasattr(self, 'widgets_puertas'):
+            self.widgets_puertas = {}
+            
+        # Limpiar referencias a widgets muertos (si se recargó la vista)
+        dead_macs = [m for m, w in self.widgets_puertas.items() if not w["frame"].winfo_exists()]
+        for m in dead_macs:
+            del self.widgets_puertas[m]
+            
         try:
             import puertas
             from config import AREAS
             lista_puertas = puertas.listar_puertas()
+            macs_actuales = set()
+            
             if not lista_puertas:
-                tk.Label(self.frame_sidebar, text="Ningún lector registrado", fg="#6c757d", bg="#2B2D30", font=("Segoe UI", 9)).pack(anchor="w", padx=20, pady=5)
+                if not hasattr(self, 'lbl_no_puertas') or not self.lbl_no_puertas.winfo_exists():
+                    self.lbl_no_puertas = tk.Label(self.frame_lista_puertas, text="Ningún lector registrado", fg="#6c757d", bg="#2B2D30", font=("Segoe UI", 9))
+                    self.lbl_no_puertas.pack(anchor="w", padx=20, pady=5)
             else:
+                if hasattr(self, 'lbl_no_puertas') and self.lbl_no_puertas.winfo_exists():
+                    self.lbl_no_puertas.destroy()
+                    delattr(self, 'lbl_no_puertas')
+                    
                 for p in lista_puertas:
-                    mac, nombre, area_id, tipo = p
+                    if len(p) == 5:
+                        mac, nombre, area_id, tipo, activa = p
+                    else:
+                        mac, nombre, area_id, tipo = p
+                        activa = 0
+                    
+                    macs_actuales.add(mac)
+                    estado_previo = self.estado_anterior_puertas.get(mac, -1)
+                    
+                    import time
+                    current_time = time.time()
+                    if not hasattr(self, 'ultimo_aviso_inactividad'):
+                        self.ultimo_aviso_inactividad = {}
+                        
+                    if getattr(self, 'rol_actual', None):
+                        if activa == 0:
+                            ultimo_aviso = self.ultimo_aviso_inactividad.get(mac, 0)
+                            
+                            if estado_previo in (1, -1):
+                                from tkinter import messagebox
+                                self.after(1500, lambda n=nombre: messagebox.showwarning("Puerta Inactiva", f"¡Alerta!\n\nLa puerta '{n}' está inactiva.\nPor favor, revise el problema."))
+                                self.ultimo_aviso_inactividad[mac] = current_time
+                            else:
+                                if (current_time - ultimo_aviso) >= 900:
+                                    from tkinter import messagebox
+                                    self.after(1500, lambda n=nombre: messagebox.showinfo("Recordatorio", f"Recordatorio:\n\nLa puerta '{n}' sigue inactiva.\nPor favor, revise el problema."))
+                                    self.ultimo_aviso_inactividad[mac] = current_time
+                                    
+                        elif activa == 1 and estado_previo == 0:
+                            from tkinter import messagebox
+                            self.after(1500, lambda n=nombre: messagebox.showinfo("Puerta Conectada", f"¡Buenas noticias!\n\nLa puerta '{n}' ya se encuentra activa y conectada nuevamente."))
+                            
+                        self.estado_anterior_puertas[mac] = activa
+                    
                     area_nombre = AREAS.get(str(area_id), f"Área {area_id}")
-                    f_lector = tk.Frame(self.frame_sidebar, bg="#2B2D30")
-                    f_lector.pack(fill=tk.X, padx=20, pady=5)
+                    color_estado = "#0A8504" if activa else "#9C0303"
                     
-                    tk.Label(f_lector, text="●", fg="#0A8504", bg="#2B2D30", font=("Segoe UI", 10)).pack(side=tk.LEFT, anchor="n", pady=(2, 0))
-                    
-                    f_textos = tk.Frame(f_lector, bg="#2B2D30")
-                    f_textos.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(5, 0))
-                    
-                    tk.Label(f_textos, text=nombre, fg="#A1A1AA", bg="#2B2D30", font=("Segoe UI", 9), anchor="w", justify="left", wraplength=140).pack(fill=tk.X)
-                    
-                    # TODO: A futuro, consultar 'estado' y 'bateria' del ESP32 para cambiar color: 
-                    # Verde = Online, Amarillo = Baja batería, Rojo = Offline
-                    tk.Label(f_textos, text=area_nombre, fg="#6c757d", bg="#2B2D30", font=("Segoe UI", 8), anchor="w", justify="left", wraplength=140).pack(fill=tk.X)
-        except Exception:
-            pass
+                    if mac not in self.widgets_puertas:
+                        f_lector = tk.Frame(self.frame_lista_puertas, bg="#2B2D30")
+                        f_lector.pack(fill=tk.X, padx=20, pady=5)
+                        
+                        lbl_circulo = tk.Label(f_lector, text="●", fg=color_estado, bg="#2B2D30", font=("Segoe UI", 10))
+                        lbl_circulo.pack(side=tk.LEFT, anchor="n", pady=(2, 0))
+                        
+                        f_textos = tk.Frame(f_lector, bg="#2B2D30")
+                        f_textos.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(5, 0))
+                        
+                        lbl_nombre = tk.Label(f_textos, text=nombre, fg="#A1A1AA", bg="#2B2D30", font=("Segoe UI", 9), anchor="w", justify="left", wraplength=140)
+                        lbl_nombre.pack(fill=tk.X)
+                        
+                        lbl_area = tk.Label(f_textos, text=area_nombre, fg="#6c757d", bg="#2B2D30", font=("Segoe UI", 8), anchor="w", justify="left", wraplength=140)
+                        lbl_area.pack(fill=tk.X)
+                        
+                        self.widgets_puertas[mac] = {
+                            "frame": f_lector,
+                            "circulo": lbl_circulo,
+                            "nombre": lbl_nombre,
+                            "area": lbl_area
+                        }
+                    else:
+                        w = self.widgets_puertas[mac]
+                        if w["circulo"].cget("fg") != color_estado:
+                            w["circulo"].config(fg=color_estado)
+                        if w["nombre"].cget("text") != nombre:
+                            w["nombre"].config(text=nombre)
+                        if w["area"].cget("text") != area_nombre:
+                            w["area"].config(text=area_nombre)
+                            
+            macs_borrar = [m for m in self.widgets_puertas if m not in macs_actuales]
+            for m in macs_borrar:
+                self.widgets_puertas[m]["frame"].destroy()
+                del self.widgets_puertas[m]
+                
+        except Exception as e:
+            print(f"Error en render_lista_puertas_sidebar: {e}")
+
+    def loop_actualizar_puertas(self):
+        if getattr(self, 'running', False):
+            self.render_lista_puertas_sidebar()
+            self.after(2000, self.loop_actualizar_puertas)
 
     def mostrar_vista_tablero(self):
         if getattr(self, 'vista_actual', None) == "tablero": return
@@ -847,6 +954,9 @@ class AdminGUI(tk.Tk):
         btn_login = tk.Button(frame_login, text="Entrar", bg="#007BFF", fg="#FFFFFF", font=("Segoe UI", 12, "bold"), command=intentar_login)
         btn_login.pack(fill=tk.X, padx=50, pady=20)
         ent_pass.bind("<Return>", intentar_login)
+        
+        self.focus_force()
+        ent_user.focus_set()
         
     def cerrar_sesion(self):
         self.rol_actual = None
@@ -1459,6 +1569,10 @@ class AdminGUI(tk.Tk):
         dlg.bind("<Escape>", lambda e: on_cancelar())
 
     def conectar_serial(self):
+        if getattr(self, 'pausar_serial', False):
+            self.after(5000, self.conectar_serial)
+            return
+            
         if self.serial_conn and self.serial_conn.is_open:
             return
         try:
@@ -1644,7 +1758,494 @@ class AdminGUI(tk.Tk):
         
         self.after(2000, self.actualizar_logs_visor)
 
+    def mostrar_vista_flashear_esp32(self):
+        # Dialogo para flashear ESP32
+        import serial.tools.list_ports
+        import subprocess
+        import threading
+        
+        top = tk.Toplevel(self)
+        top.title("Activar puerta")
+        top.geometry("500x320")
+        top.configure(bg="#F4F6F9")
+        top.transient(self)
+        top.grab_set()
+        try:
+            import os
+            icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Imagenes", "G.ico")
+            if os.path.exists(icon_path):
+                top.iconbitmap(icon_path)
+        except: pass
+
+        lbl_titulo = tk.Label(top, text="Activar puerta", font=("Segoe UI", 14, "bold"), bg="#F4F6F9", fg="#1A1A1A")
+        lbl_titulo.pack(pady=(25, 10))
+        
+        frame_controls = tk.Frame(top, bg="#F4F6F9")
+        frame_controls.pack(pady=10)
+        
+        tk.Label(frame_controls, text="Puerto COM:", font=("Segoe UI", 10, "bold"), bg="#F4F6F9", fg="#333333").pack(side=tk.LEFT, padx=5)
+        
+        puertos = [port.device for port in serial.tools.list_ports.comports()]
+        if not puertos: puertos = ["COM1"]
+        
+        var_puerto = tk.StringVar(value=puertos[0])
+        cb_puertos = ttk.Combobox(frame_controls, textvariable=var_puerto, values=puertos, state="readonly", width=12)
+        cb_puertos.pack(side=tk.LEFT, padx=5)
+        
+        btn_refresh = tk.Button(frame_controls, text="Actualizar", command=lambda: cb_puertos.config(values=[p.device for p in serial.tools.list_ports.comports()]), bg="#007BFF", fg="white", font=("Segoe UI", 9, "bold"), bd=0, padx=10, pady=3)
+        btn_refresh.pack(side=tk.LEFT, padx=5)
+        
+        lbl_status = tk.Label(top, text="Listo para activar...", font=("Segoe UI", 11), bg="#F4F6F9", fg="#6c757d")
+        lbl_status.pack(pady=(30, 5))
+        
+        progress_var = tk.DoubleVar()
+        progress_bar = ttk.Progressbar(top, variable=progress_var, maximum=100, length=350, mode="determinate")
+        progress_bar.pack(pady=5)
+        
+        def ejecutar_flash():
+            puerto = var_puerto.get()
+            if not puerto:
+                messagebox.showerror("Error", "Seleccione un puerto COM")
+                return
+            
+            btn_flash.config(state=tk.DISABLED)
+            lbl_status.config(text=f"Liberando puerto...", fg="#007BFF")
+            progress_bar.config(mode="indeterminate")
+            progress_bar.start(15)
+            
+            # Pausar la lectura serial global para liberar el puerto COM
+            self.pausar_serial = True
+            if hasattr(self, 'serial_conn') and self.serial_conn:
+                try:
+                    self.serial_conn.close()
+                except: pass
+                self.serial_conn = None
+            
+            def thread_task():
+                import os
+                import sys
+                import io
+                import re
+                
+                # Para funcionar correctamente tanto en script Python como en .exe de PyInstaller
+                if getattr(sys, 'frozen', False):
+                    base_path = os.path.dirname(sys.executable)
+                else:
+                    base_path = os.path.dirname(os.path.abspath(__file__))
+                    
+                firmware_dir = os.path.join(base_path, "firmware")
+                bootloader = os.path.join(firmware_dir, "bootloader.bin")
+                partition = os.path.join(firmware_dir, "partition-table.bin")
+                app_bin = os.path.join(firmware_dir, "csproject.bin")
+                
+                if not (os.path.exists(bootloader) and os.path.exists(partition) and os.path.exists(app_bin)):
+                    top.after(0, lambda: lbl_status.config(text="Error: Faltan archivos .bin", fg="#9C0303"))
+                    top.after(0, lambda: btn_flash.config(state=tk.NORMAL))
+                    return
+                
+                top.after(0, lambda: lbl_status.config(text="Conectando con el lector..."))
+                
+                class FlashMonitor(io.StringIO):
+                    def __init__(self, lbl, p_var, root, p_bar):
+                        super().__init__()
+                        self.lbl = lbl
+                        self.p_var = p_var
+                        self.root = root
+                        self.p_bar = p_bar
+                        self.full_log = ""
+                        self.line_buf = ""
+                    def write(self, string):
+                        self.full_log += string
+                        self.line_buf += string
+                        
+                        if '\r' in self.line_buf or '\n' in self.line_buf:
+                            match = re.search(r"\((\d+)\s*%\)", self.line_buf)
+                            if match:
+                                val = int(match.group(1))
+                                self.root.after(0, lambda v=val: self.p_var.set(v))
+                                
+                            if "Erasing flash" in self.line_buf:
+                                self.root.after(0, lambda: self.lbl.config(text="Borrando memoria interna..."))
+                            elif "Writing at" in self.line_buf:
+                                self.root.after(0, lambda: self.lbl.config(text="Instalando sistema RFID..."))
+                                def stop_anim():
+                                    if str(self.p_bar.cget("mode")) == "indeterminate":
+                                        self.p_bar.stop()
+                                        self.p_bar.config(mode="determinate")
+                                self.root.after(0, stop_anim)
+                            elif "Verifying" in self.line_buf:
+                                self.root.after(0, lambda: self.lbl.config(text="Verificando instalación..."))
+                                self.root.after(0, lambda: self.p_var.set(100))
+                            elif "Hard resetting" in self.line_buf:
+                                self.root.after(0, lambda: self.lbl.config(text="Reiniciando lector..."))
+                                self.root.after(0, lambda: self.p_var.set(100))
+                                
+                            parts = self.line_buf.replace('\r', '\n').split('\n')
+                            self.line_buf = parts[-1]
+                            
+                        return len(string)
+                    def flush(self):
+                        pass
+
+                old_stdout = sys.stdout
+                old_stderr = sys.stderr
+                redirector = FlashMonitor(lbl_status, progress_var, top, progress_bar)
+                sys.stdout = redirector
+                sys.stderr = redirector
+                
+                try:
+                    import esptool  # type: ignore
+                    cmd = [
+                        "--port", puerto,
+                        "--baud", "460800",
+                        "--before", "default_reset",
+                        "--after", "hard_reset",
+                        "--chip", "esp32",
+                        "write_flash",
+                        "--flash_mode", "dio",
+                        "--flash_size", "2MB",
+                        "--flash_freq", "40m",
+                        "0x1000", bootloader,
+                        "0x8000", partition,
+                        "0x10000", app_bin
+                    ]
+                    esptool.main(cmd)
+                    
+                    sys.stdout = old_stdout
+                    sys.stderr = old_stderr
+                    top.after(0, lambda: lbl_status.config(text="¡Lector Activado Exitosamente!", fg="#28A745"))
+                    self.after(500, lambda: self.mostrar_registro_puerta_post_flash(top, redirector.full_log))
+                    
+                except SystemExit as e:
+                    sys.stdout = old_stdout
+                    sys.stderr = old_stderr
+                    top.after(0, lambda: progress_bar.stop())
+                    if e.code == 0 or e.code is None:
+                        top.after(0, lambda: lbl_status.config(text="¡Lector Activado Exitosamente!", fg="#28A745"))
+                        self.after(500, lambda: self.mostrar_registro_puerta_post_flash(top, redirector.full_log))
+                    else:
+                        top.after(0, lambda: lbl_status.config(text=f"Error de activación (Código {e.code})", fg="#9C0303"))
+                        messagebox.showerror("Error", "Ocurrió un problema al activar el lector.", parent=top)
+                except Exception as e:
+                    sys.stdout = old_stdout
+                    sys.stderr = old_stderr
+                    top.after(0, lambda: progress_bar.stop())
+                    top.after(0, lambda: lbl_status.config(text=f"Fallo de ejecución", fg="#9C0303"))
+                    messagebox.showerror("Error", f"Error inesperado:\n{e}", parent=top)
+                finally:
+                    sys.stdout = old_stdout
+                    sys.stderr = old_stderr
+                    btn_flash.config(state=tk.NORMAL)
+                    self.pausar_serial = False
+                    
+            threading.Thread(target=thread_task, daemon=True).start()
+            
+        btn_flash = tk.Button(top, text="Activar puerta", bg="#28A745", fg="white", font=("Segoe UI", 10, "bold"), bd=0, padx=20, pady=10, command=ejecutar_flash)
+        btn_flash.pack(pady=(0, 20))
+
+    def mostrar_registro_puerta_post_flash(self, top_flasheo, console_text):
+        import re
+        from config import AREAS
+        
+        # Buscar MAC en el log de esptool
+        mac_match = re.search(r"MAC:\s*(([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2})", console_text)
+        mac_detectada = mac_match.group(1).upper() if mac_match else ""
+        
+        # Cerrar el modal de flasheo
+        try: top_flasheo.destroy()
+        except: pass
+        
+        if not mac_detectada:
+            messagebox.showwarning("Advertencia", "Flasheo exitoso pero no se pudo detectar la dirección MAC en los logs.\nDeberás registrar la puerta manualmente desde el menú 'Puertas -> Agregar'.")
+            return
+            
+        # Modal de registro
+        dlg = tk.Toplevel(self)
+        dlg.title("Completar Activación")
+        dlg.geometry("450x450")
+        dlg.configure(bg="#F4F6F9")
+        dlg.transient(self)
+        dlg.grab_set()
+        
+        tk.Label(dlg, text="Lector Activado Exitosamente", font=("Segoe UI", 14, "bold"), bg="#F4F6F9", fg="#007BFF").pack(pady=(20, 5))
+        tk.Label(dlg, text=f"MAC Detectada: {mac_detectada}", font=("Segoe UI", 10, "bold"), bg="#F4F6F9", fg="#28A745").pack(pady=(0, 20))
+        
+        f_campos = tk.Frame(dlg, bg="#F4F6F9")
+        f_campos.pack(fill=tk.BOTH, expand=True, padx=40)
+        
+        tk.Label(f_campos, text="Nombre para esta puerta:", bg="#F4F6F9", font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(10, 2))
+        e_nombre = ttk.Entry(f_campos, font=("Segoe UI", 10))
+        e_nombre.pack(fill=tk.X)
+        
+        f_area_radios = tk.Frame(f_campos, bg="#F4F6F9")
+        f_area_radios.pack(fill=tk.X, pady=(15, 5))
+        
+        var_modo_area = tk.StringVar(value="existente")
+        def on_modo_area_change():
+            if var_modo_area.get() == "existente":
+                e_nueva_area.pack_forget()
+                cb_area.pack(fill=tk.X)
+            else:
+                cb_area.pack_forget()
+                e_nueva_area.pack(fill=tk.X)
+                e_nueva_area.focus()
+                
+        rb_existente = tk.Radiobutton(f_area_radios, text="Seleccionar área existente", variable=var_modo_area, value="existente", bg="#F4F6F9", font=("Segoe UI", 9, "bold"), command=on_modo_area_change)
+        rb_existente.pack(side=tk.LEFT, padx=(0, 10))
+        
+        rb_nueva = tk.Radiobutton(f_area_radios, text="Nueva Área", variable=var_modo_area, value="nueva", bg="#F4F6F9", font=("Segoe UI", 9, "bold"), fg="#007BFF", command=on_modo_area_change)
+        rb_nueva.pack(side=tk.LEFT)
+        
+        f_area_input = tk.Frame(f_campos, bg="#F4F6F9")
+        f_area_input.pack(fill=tk.X)
+        
+        var_area = tk.StringVar()
+        cb_area = ttk.Combobox(f_area_input, textvariable=var_area, state="readonly", font=("Segoe UI", 10))
+        cb_area.pack(fill=tk.X)
+        
+        var_nueva_area = tk.StringVar()
+        e_nueva_area = ttk.Entry(f_area_input, textvariable=var_nueva_area, font=("Segoe UI", 10))
+        
+        def actualizar_opciones_area():
+            import config
+            opciones = [f"{k} - {v}" for k, v in config.AREAS.items()]
+            cb_area.config(values=opciones)
+            
+            curr = var_area.get()
+            if curr not in opciones:
+                if opciones:
+                    var_area.set(opciones[-1])
+                    
+        actualizar_opciones_area()
+        dlg.bind("<FocusIn>", lambda e: actualizar_opciones_area())
+        
+        tk.Label(f_campos, text="Tipo de puerta:", bg="#F4F6F9", font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(15, 2))
+        var_tipo = tk.StringVar(value="Entrada")
+        cb_tipo = ttk.Combobox(f_campos, textvariable=var_tipo, values=["Entrada", "Salida", "Ambos"], state="readonly", font=("Segoe UI", 10))
+        cb_tipo.pack(fill=tk.X)
+        
+        def guardar_puerta():
+            nombre = e_nombre.get().strip()
+            if not nombre:
+                messagebox.showerror("Error", "Debes ingresar un nombre para la puerta", parent=dlg)
+                return
+                
+            if var_modo_area.get() == "nueva":
+                nombre_nueva = var_nueva_area.get().strip()
+                if not nombre_nueva:
+                    messagebox.showerror("Error", "Debes ingresar un nombre para la nueva área", parent=dlg)
+                    return
+                    
+                from areas_manager import crear_nueva_area
+                if not crear_nueva_area(nombre_nueva):
+                    messagebox.showerror("Error", "No se pudo agregar la nueva área. Puede que ya exista.", parent=dlg)
+                    return
+                    
+                import config
+                area_id = None
+                for k, v in config.AREAS.items():
+                    if v == nombre_nueva:
+                        area_id = str(k)
+                        break
+                        
+                if not area_id:
+                    messagebox.showerror("Error", "Error obteniendo el ID de la nueva área.", parent=dlg)
+                    return
+            else:
+                area_str = var_area.get()
+                area_id = area_str.split(" - ")[0] if " - " in area_str else ""
+            
+            tipo = var_tipo.get()
+            
+            import puertas
+            ok = puertas.registrar_puerta(mac_detectada, nombre, area_id, tipo)
+            if ok:
+                messagebox.showinfo("Éxito", f"La puerta '{nombre}' se registró correctamente en el sistema.", parent=dlg)
+                dlg.destroy()
+                if self.vista_actual == "puertas":
+                    self.mostrar_vista_puertas() # Recargar la vista si estamos ahí
+            else:
+                messagebox.showerror("Error", "Hubo un error al guardar la puerta en la base de datos.", parent=dlg)
+                
+        f_btns = tk.Frame(dlg, bg="#F4F6F9")
+        f_btns.pack(pady=25)
+        
+        tk.Button(f_btns, text="Guardar y Finalizar", bg="#007BFF", fg="white", font=("Segoe UI", 10, "bold"), bd=0, padx=15, pady=8, command=guardar_puerta).pack(side=tk.LEFT, padx=10)
+        tk.Button(f_btns, text="Cancelar", bg="#6c757d", fg="white", font=("Segoe UI", 10), bd=0, padx=15, pady=8, command=dlg.destroy).pack(side=tk.LEFT, padx=10)
+
+
+    def mostrar_vista_formatear_esp32(self):
+        import serial.tools.list_ports
+        import threading
+        
+        top = tk.Toplevel(self)
+        top.title("Desactivar puerta")
+        top.geometry("500x320")
+        top.configure(bg="#F4F6F9")
+        top.transient(self)
+        top.grab_set()
+        try:
+            import os
+            icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Imagenes", "G.ico")
+            if os.path.exists(icon_path):
+                top.iconbitmap(icon_path)
+        except: pass
+
+        lbl_titulo = tk.Label(top, text="Desactivar puerta", font=("Segoe UI", 14, "bold"), bg="#F4F6F9", fg="#9C0303")
+        lbl_titulo.pack(pady=(25, 10))
+        
+        frame_controls = tk.Frame(top, bg="#F4F6F9")
+        frame_controls.pack(pady=10)
+        
+        tk.Label(frame_controls, text="Puerto COM:", font=("Segoe UI", 10, "bold"), bg="#F4F6F9", fg="#333333").pack(side=tk.LEFT, padx=5)
+        
+        puertos = [port.device for port in serial.tools.list_ports.comports()]
+        if not puertos: puertos = ["COM1"]
+        
+        var_puerto = tk.StringVar(value=puertos[0])
+        cb_puertos = ttk.Combobox(frame_controls, textvariable=var_puerto, values=puertos, state="readonly", width=12)
+        cb_puertos.pack(side=tk.LEFT, padx=5)
+        
+        btn_refresh = tk.Button(frame_controls, text="Actualizar", command=lambda: cb_puertos.config(values=[p.device for p in serial.tools.list_ports.comports()]), bg="#007BFF", fg="white", font=("Segoe UI", 9, "bold"), bd=0, padx=10, pady=3)
+        btn_refresh.pack(side=tk.LEFT, padx=5)
+        
+        lbl_status = tk.Label(top, text="Listo para formatear...", font=("Segoe UI", 11), bg="#F4F6F9", fg="#6c757d")
+        lbl_status.pack(pady=(30, 5))
+        
+        progress_var = tk.DoubleVar()
+        progress_bar = ttk.Progressbar(top, variable=progress_var, maximum=100, length=350, mode="determinate")
+        progress_bar.pack(pady=5)
+        
+        def ejecutar_formateo():
+            puerto = var_puerto.get()
+            if not puerto:
+                from tkinter import messagebox
+                messagebox.showerror("Error", "Seleccione un puerto COM", parent=top)
+                return
+            
+            btn_format.config(state=tk.DISABLED)
+            lbl_status.config(text=f"Liberando puerto...", fg="#007BFF")
+            progress_bar.config(mode="indeterminate")
+            progress_bar.start(15)
+            
+            self.pausar_serial = True
+            if hasattr(self, 'serial_conn') and self.serial_conn:
+                try:
+                    self.serial_conn.close()
+                except: pass
+                self.serial_conn = None
+            
+            def thread_task():
+                import sys
+                import io
+                import re
+                from tkinter import messagebox
+                import puertas
+                
+                top.after(0, lambda: lbl_status.config(text="Conectando y borrando memoria..."))
+                
+                class FlashMonitor(io.StringIO):
+                    def __init__(self, lbl, p_var, root, p_bar):
+                        super().__init__()
+                        self.lbl = lbl
+                        self.p_var = p_var
+                        self.root = root
+                        self.p_bar = p_bar
+                        self.full_log = ""
+                        self.line_buf = ""
+                    def write(self, string):
+                        self.full_log += string
+                        self.line_buf += string
+                        if '\r' in self.line_buf or '\n' in self.line_buf:
+                            if "Erasing" in self.line_buf:
+                                self.root.after(0, lambda: self.lbl.config(text="Borrando chip, espera..."))
+                            parts = self.line_buf.replace('\r', '\n').split('\n')
+                            self.line_buf = parts[-1]
+                        return len(string)
+                    def flush(self): pass
+
+                old_stdout = sys.stdout
+                old_stderr = sys.stderr
+                redirector = FlashMonitor(lbl_status, progress_var, top, progress_bar)
+                sys.stdout = redirector
+                sys.stderr = redirector
+                
+                try:
+                    import esptool  # type: ignore
+                    cmd = ["--port", puerto, "--baud", "460800", "erase_flash"]
+                    esptool.main(cmd)
+                    
+                    # Si llega aquí sin SystemExit, significa que fue exitoso
+                    sys.stdout = old_stdout
+                    sys.stderr = old_stderr
+                    top.after(0, lambda: progress_bar.stop())
+                    top.after(0, lambda: progress_bar.config(mode="determinate"))
+                    top.after(0, lambda: progress_var.set(100))
+                    
+                    mac_match = re.search(r"MAC:\s*([0-9a-fA-F:]+)", redirector.full_log)
+                    if mac_match:
+                        mac_erased = mac_match.group(1).upper()
+                        puertas.eliminar_puerta(mac_erased)
+                        top.after(0, lambda: lbl_status.config(text=f"Formateado! MAC: {mac_erased}", fg="#28A745"))
+                        if self.vista_actual == "puertas":
+                            top.after(0, self.mostrar_vista_puertas)
+                            
+                        def on_success():
+                            messagebox.showinfo("Lector Desactivado", f"El lector ha sido formateado exitosamente.\\n\\nLa puerta con MAC {mac_erased} fue eliminada del sistema.", parent=top)
+                            top.destroy()
+                        top.after(500, on_success)
+                    else:
+                        top.after(0, lambda: lbl_status.config(text="Formateado! (MAC no leída)", fg="#28A745"))
+                        def on_success_no_mac():
+                            messagebox.showwarning("Lector Desactivado", "El lector ha sido formateado exitosamente, pero no se detectó su dirección MAC en los logs para eliminarlo automáticamente de la base de datos.", parent=top)
+                            top.destroy()
+                        top.after(500, on_success_no_mac)
+                        
+                except SystemExit as e:
+                    sys.stdout = old_stdout
+                    sys.stderr = old_stderr
+                    top.after(0, lambda: progress_bar.stop())
+                    if e.code == 0 or e.code is None:
+                        top.after(0, lambda: progress_bar.config(mode="determinate"))
+                        top.after(0, lambda: progress_var.set(100))
+                        
+                        mac_match = re.search(r"MAC:\s*([0-9a-fA-F:]+)", redirector.full_log)
+                        if mac_match:
+                            mac_erased = mac_match.group(1).upper()
+                            puertas.eliminar_puerta(mac_erased)
+                            top.after(0, lambda: lbl_status.config(text=f"Formateado! MAC: {mac_erased}", fg="#28A745"))
+                            if self.vista_actual == "puertas":
+                                top.after(0, self.mostrar_vista_puertas)
+                                
+                            def on_success2():
+                                messagebox.showinfo("Lector Desactivado", f"El lector ha sido formateado exitosamente.\\n\\nLa puerta con MAC {mac_erased} fue eliminada del sistema.", parent=top)
+                                top.destroy()
+                            top.after(500, on_success2)
+                        else:
+                            top.after(0, lambda: lbl_status.config(text="Formateado! (MAC no leída)", fg="#28A745"))
+                            def on_success_no_mac2():
+                                messagebox.showwarning("Lector Desactivado", "El lector ha sido formateado exitosamente, pero no se detectó su dirección MAC en los logs para eliminarlo automáticamente de la base de datos.", parent=top)
+                                top.destroy()
+                            top.after(500, on_success_no_mac2)
+                except Exception as e:
+                    sys.stdout = old_stdout
+                    sys.stderr = old_stderr
+                    top.after(0, lambda: progress_bar.stop())
+                    top.after(0, lambda: lbl_status.config(text=f"Fallo de formateo", fg="#9C0303"))
+                finally:
+                    self.pausar_serial = False
+                    sys.stdout = old_stdout
+                    sys.stderr = old_stderr
+                    top.after(0, lambda: btn_format.config(state=tk.NORMAL))
+                    
+            import threading
+            threading.Thread(target=thread_task, daemon=True).start()
+            
+        btn_format = tk.Button(top, text="Desactivar puerta", bg="#9C0303", fg="white", font=("Segoe UI", 10, "bold"), bd=0, padx=20, pady=10, command=ejecutar_formateo)
+        btn_format.pack(pady=(0, 20))
+
     def destroy(self):
+
 
         self.running = False
         if self.serial_conn and self.serial_conn.is_open: 
