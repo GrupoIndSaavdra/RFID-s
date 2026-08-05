@@ -65,6 +65,7 @@ class AdminGUI(tk.Tk):
         super().__init__()
         self.title("Grupo Industrial Saavedra")
         self.geometry("950x700")
+        self.state("zoomed")
         
         try:
             import os
@@ -125,7 +126,12 @@ class AdminGUI(tk.Tk):
             "logo": os.path.join(base_dir, "Imagenes", "Logo.png"),
             "buscar": os.path.join(base_dir, "Imagenes", "Buscar.png"),
             "activar": os.path.join(base_dir, "Imagenes", "Activar.png"),
-            "eliminar": os.path.join(base_dir, "Imagenes", "Eliminar.png")
+            "eliminar": os.path.join(base_dir, "Imagenes", "Eliminar.png"),
+            "tablero": os.path.join(base_dir, "Imagenes", "Tablero.png"),
+            "usuarios_btn": os.path.join(base_dir, "Imagenes", "Usuarios.png"),
+            "visor_btn": os.path.join(base_dir, "Imagenes", "Visor.png"),
+            "puertas_btn": os.path.join(base_dir, "Imagenes", "Puertas.png"),
+            "descarga": os.path.join(base_dir, "Imagenes", "Descarga.png")
         }
         self.iconos = {}
         
@@ -421,32 +427,32 @@ class AdminGUI(tk.Tk):
         
         # Botón Tablero (Logs)
         if self.rol_actual in ['Superadmin', 'Admin', 'ingeniero']:
-            btn_tablero = ttk.Button(self.frame_sidebar, text="  Tablero", image=self.cargar_icono("buscar", 16), compound=tk.LEFT, style="Menu.TButton", command=self.mostrar_vista_tablero)
+            btn_tablero = ttk.Button(self.frame_sidebar, text="  Tablero", image=self.cargar_icono("tablero", 16), compound=tk.LEFT, style="Menu.TButton", command=self.mostrar_vista_tablero)
             btn_tablero.pack(fill=tk.X, pady=2)
         
         # Botón principal Usuarios
-        self.btn_main_usuarios = ttk.Button(self.frame_sidebar, text="  Usuarios", image=self.cargar_icono("accept", 16), compound=tk.LEFT, style="Menu.TButton", command=self.toggle_submenu_usuarios)
+        self.btn_main_usuarios = ttk.Button(self.frame_sidebar, text="  Usuarios", image=self.cargar_icono("usuarios_btn", 16), compound=tk.LEFT, style="Menu.TButton", command=self.toggle_submenu_usuarios)
         self.btn_main_usuarios.pack(fill=tk.X, pady=2)
         
         self.frame_sub_usuarios = tk.Frame(self.frame_sidebar, bg="#1E1F22", height=0)
         self.frame_sub_usuarios.pack_propagate(False)
         
-        btn_reg_u = ttk.Button(self.frame_sub_usuarios, text="  Nuevos Registros", style="SubMenu.TButton", command=self.mostrar_vista_formulario_usuario)
+        btn_reg_u = ttk.Button(self.frame_sub_usuarios, text="  Nuevos Registros", image=self.cargar_icono("accept", 16), compound=tk.LEFT, style="SubMenu.TButton", command=self.mostrar_vista_formulario_usuario)
         btn_reg_u.pack(fill=tk.X, pady=2)
 
         # Botón principal Puertas
-        self.btn_main_puertas = ttk.Button(self.frame_sidebar, text="  Puertas", image=self.cargar_icono("accept", 16), compound=tk.LEFT, style="Menu.TButton", command=self.toggle_submenu_puertas)
+        self.btn_main_puertas = ttk.Button(self.frame_sidebar, text="  Puertas", image=self.cargar_icono("puertas_btn", 16), compound=tk.LEFT, style="Menu.TButton", command=self.toggle_submenu_puertas)
         self.btn_main_puertas.pack(fill=tk.X, pady=2)
         
         self.frame_sub_puertas = tk.Frame(self.frame_sidebar, bg="#1E1F22", height=0)
         self.frame_sub_puertas.pack_propagate(False)
         
-        btn_add_p = ttk.Button(self.frame_sub_puertas, text="  Agregar", style="SubMenu.TButton", command=self.mostrar_vista_formulario_puerta)
+        btn_add_p = ttk.Button(self.frame_sub_puertas, text="  Agregar", image=self.cargar_icono("accept", 16), compound=tk.LEFT, style="SubMenu.TButton", command=self.mostrar_vista_formulario_puerta)
         btn_add_p.pack(fill=tk.X, pady=2)
 
             
         # Botón principal Visor
-        self.btn_main_visor = ttk.Button(self.frame_sidebar, text="  Visor", image=self.cargar_icono("buscar", 16), compound=tk.LEFT, style="Menu.TButton", command=self.toggle_submenu_visor)
+        self.btn_main_visor = ttk.Button(self.frame_sidebar, text="  Visor", image=self.cargar_icono("visor_btn", 16), compound=tk.LEFT, style="Menu.TButton", command=self.toggle_submenu_visor)
         self.btn_main_visor.pack(fill=tk.X, pady=2)
         
         self.frame_sub_visor = tk.Frame(self.frame_sidebar, bg="#1E1F22", height=0)
@@ -634,13 +640,15 @@ class AdminGUI(tk.Tk):
         
         tk.Label(card_usuarios, text="USUARIOS AUTORIZADOS", bg="#FFFFFF", fg="#6c757d", font=("Segoe UI", 10, "bold")).pack(anchor="w", padx=15, pady=10)
         
-        col_us = ("uid", "nombre", "areas")
+        col_us = ("uid", "nombre", "rol", "areas")
         self.tree_usuarios_tablero = ttk.Treeview(card_usuarios, columns=col_us, show="headings", selectmode="none", height=5)
         self.tree_usuarios_tablero.heading("uid", text="UID Tarjeta")
         self.tree_usuarios_tablero.heading("nombre", text="Nombre")
+        self.tree_usuarios_tablero.heading("rol", text="Rol")
         self.tree_usuarios_tablero.heading("areas", text="Áreas Permitidas")
         self.tree_usuarios_tablero.column("uid", width=150, anchor=tk.W)
         self.tree_usuarios_tablero.column("nombre", width=250, anchor=tk.W)
+        self.tree_usuarios_tablero.column("rol", width=150, anchor=tk.W)
         self.tree_usuarios_tablero.column("areas", width=300, anchor=tk.W)
         
         scroll_ux = ttk.Scrollbar(card_usuarios, orient=tk.HORIZONTAL, command=self.tree_usuarios_tablero.xview)
@@ -651,7 +659,7 @@ class AdminGUI(tk.Tk):
         
         self.tree_usuarios_tablero.configure(yscrollcommand=scroll_u.set, xscrollcommand=scroll_ux.set)
         self.tree_usuarios_tablero.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(15, 0), pady=(0, 15))
-        
+
         # Tarjeta inferior: Registros
         card_logs = tk.Frame(self.frame_main, bg="#FFFFFF", bd=0, highlightbackground="#E0E0E0", highlightthickness=1)
         card_logs.pack(fill=tk.BOTH, expand=True, padx=25, pady=(0, 25))
@@ -696,7 +704,7 @@ class AdminGUI(tk.Tk):
         if not conn: return
         try:
             cur = conn.cursor()
-            cur.execute("SELECT uid, nombre, areas FROM tarjetas WHERE activa=1 ORDER BY nombre ASC")
+            cur.execute("SELECT uid, nombre, rol, areas FROM tarjetas WHERE activa=1 ORDER BY nombre ASC")
             usuarios_activos = cur.fetchall()
             
             filtro_texto = self.area_filtro_tablero.get()
@@ -705,7 +713,7 @@ class AdminGUI(tk.Tk):
                 filtro_id = filtro_texto.split(" - ")[0]
                 
             for u in usuarios_activos:
-                uid, nombre, areas = u
+                uid, nombre, rol, areas = u
                 if not areas: areas = ""
                 # Si hay filtro, checar que el filtro_id este en la lista de areas del usuario
                 if filtro_id:
@@ -714,7 +722,7 @@ class AdminGUI(tk.Tk):
                         continue
                 import permisos
                 nombres_areas = permisos.areas_a_nombres(areas)
-                self.tree_usuarios_tablero.insert("", tk.END, values=(uid, nombre, nombres_areas))
+                self.tree_usuarios_tablero.insert("", tk.END, values=(uid, nombre, rol, nombres_areas))
         except Exception as e:
             print(f"Error cargando usuarios en tablero: {e}")
         finally:
@@ -769,6 +777,7 @@ class AdminGUI(tk.Tk):
     def render_logs_tablero(self, nuevos_logs):
         if getattr(self, 'vista_actual', None) != "tablero": return
         from config import AREAS
+        
         for log in nuevos_logs:
             log_id, uid, area, fecha, fecha_salida, tipo, nombre_db, activa = log
             
@@ -1730,25 +1739,76 @@ class AdminGUI(tk.Tk):
         
         self.lbl_stats_visor = tk.Label(card_stats, text="Resumen Global: Calculando...", bg="#FFFFFF", fg="#6c757d", font=("Segoe UI", 11, "bold"))
         self.lbl_stats_visor.pack(side=tk.LEFT, padx=20, pady=15)
+        
+        btn_descargar_pdf = tk.Button(card_stats, text=" Descargar PDF", image=self.cargar_icono("descarga", 16), compound=tk.LEFT, bg="#F4F6F9", fg="#2B2D30", font=("Segoe UI", 9, "bold"), bd=0, activebackground="#E0E0E0", cursor="hand2", command=self.descargar_pdf_visor)
+        btn_descargar_pdf.pack(side=tk.RIGHT, padx=20, pady=15)
+
+        try:
+            from tkcalendar import DateEntry # type: ignore
+            import datetime
+            
+            frame_fechas = tk.Frame(card_stats, bg="#FFFFFF")
+            frame_fechas.pack(side=tk.RIGHT, padx=20, pady=15)
+            
+            tk.Label(frame_fechas, text="Desde:", bg="#FFFFFF", font=("Segoe UI", 9)).pack(side=tk.LEFT, padx=(0,5))
+            
+            # Estilos del calendario (Windows 11 / Fluent UI Light Theme)
+            cal_style = {
+                'width': 12,
+                'font': ("Segoe UI", 10),
+                'background': '#FFFFFF', # Cabecera
+                'foreground': '#000000', # Texto cabecera
+                'borderwidth': 0,
+                'date_pattern': 'yyyy-mm-dd',
+                'showweeknumbers': False, # Quitar la columna de números de semana
+                'headersbackground': '#FFFFFF',
+                'headersforeground': '#000000', # Días de la semana en negro
+                'selectbackground': '#0067C0', # Azul nativo de Windows (Fluent)
+                'selectforeground': '#FFFFFF',
+                'normalbackground': '#FFFFFF',
+                'normalforeground': '#000000',
+                'weekendbackground': '#FFFFFF',
+                'weekendforeground': '#000000', # Fines de semana igual que entre semana
+                'othermonthforeground': '#797775',
+                'othermonthbackground': '#FFFFFF',
+                'bordercolor': '#FFFFFF', # Sin borde oscuro
+                'state': 'readonly'
+            }
+            
+            self.date_desde = DateEntry(frame_fechas, **cal_style)
+            self.date_desde.pack(side=tk.LEFT, padx=(0,10))
+            self.date_desde.set_date(datetime.date.today() - datetime.timedelta(days=30))
+            
+            tk.Label(frame_fechas, text="Hasta:", bg="#FFFFFF", font=("Segoe UI", 9)).pack(side=tk.LEFT, padx=(0,5))
+            self.date_hasta = DateEntry(frame_fechas, **cal_style)
+            self.date_hasta.pack(side=tk.LEFT, padx=(0,10))
+            
+            btn_filtrar = tk.Button(frame_fechas, text="Filtrar", bg="#F4F6F9", bd=1, command=self.forzar_actualizacion_visor)
+            btn_filtrar.pack(side=tk.LEFT)
+        except ImportError:
+            self.date_desde = None
+            self.date_hasta = None
 
         card_logs = tk.Frame(self.frame_main, bg="#FFFFFF", bd=0, highlightbackground="#E0E0E0", highlightthickness=1)
         card_logs.pack(fill=tk.BOTH, expand=True, padx=25, pady=(0, 25))
 
-        col_logs = ("uid", "nombre", "area", "motivo", "entrada", "salida")
+        col_logs = ("uid", "nombre", "area", "fecha", "motivo", "entrada", "salida")
         self.tree_visor = ttk.Treeview(card_logs, columns=col_logs, show="headings", selectmode="none")
         self.tree_visor.heading("uid", text="UID")
         self.tree_visor.heading("nombre", text="Nombre")
         self.tree_visor.heading("area", text="Área")
+        self.tree_visor.heading("fecha", text="Fecha")
         self.tree_visor.heading("motivo", text="Motivo")
         self.tree_visor.heading("entrada", text="Entrada")
         self.tree_visor.heading("salida", text="Salida")
 
-        self.tree_visor.column("uid", width=100, anchor=tk.CENTER)
+        self.tree_visor.column("uid", width=80, anchor=tk.CENTER)
         self.tree_visor.column("nombre", width=180, anchor=tk.W)
         self.tree_visor.column("area", width=120, anchor=tk.CENTER)
+        self.tree_visor.column("fecha", width=90, anchor=tk.CENTER)
         self.tree_visor.column("motivo", width=250, anchor=tk.W)
-        self.tree_visor.column("entrada", width=100, anchor=tk.CENTER)
-        self.tree_visor.column("salida", width=100, anchor=tk.CENTER)
+        self.tree_visor.column("entrada", width=80, anchor=tk.CENTER)
+        self.tree_visor.column("salida", width=80, anchor=tk.CENTER)
 
         self.tree_visor.tag_configure("red", foreground="#9C0303")
         self.tree_visor.tag_configure("green", foreground="#0A8504")
@@ -1767,6 +1827,52 @@ class AdminGUI(tk.Tk):
 
         self.actualizar_logs_visor()
 
+    def forzar_actualizacion_visor(self):
+        if not getattr(self, 'vista_actual', None) == "visor": return
+        self.processed_logs_visor.clear()
+        for item in self.tree_visor.get_children():
+            self.tree_visor.delete(item)
+        self.permitidos_visor = 0
+        self.denegados_visor = 0
+        self.last_visor_log_id = 0
+        self.actualizar_logs_visor()
+
+    def descargar_pdf_visor(self):
+        from tkinter import filedialog, messagebox
+        import threading
+        
+        ruta = filedialog.asksaveasfilename(
+            defaultextension=".pdf",
+            filetypes=[("PDF files", "*.pdf")],
+            title="Guardar Reporte como..."
+        )
+        if not ruta:
+            return
+            
+        logs_data = []
+        for item in self.tree_visor.get_children():
+            logs_data.append(self.tree_visor.item(item, "values"))
+            
+        permitidos = getattr(self, "permitidos_visor", 0)
+        denegados = getattr(self, "denegados_visor", 0)
+        area = getattr(self, "area_visor_actual", "General")
+        
+        def tarea_pdf():
+            import reportes
+            exito = reportes.generar_reporte_pdf(ruta, area, logs_data, permitidos, denegados)
+            if exito:
+                self.after(0, lambda: messagebox.showinfo("Éxito", f"El PDF se guardó correctamente en:\n{ruta}"))
+                import platform
+                import os
+                try:
+                    if platform.system() == 'Windows':
+                        os.startfile(ruta)
+                except: pass
+            else:
+                self.after(0, lambda: messagebox.showerror("Error", "Ocurrió un error al generar el PDF."))
+                
+        threading.Thread(target=tarea_pdf, daemon=True).start()
+
     def actualizar_logs_visor(self):
         if getattr(self, 'vista_actual', None) != "visor": return
 
@@ -1780,15 +1886,36 @@ class AdminGUI(tk.Tk):
             
             try:
                 cur = conn.cursor()
-                query = "SELECT id, uid, area, fecha, fecha_salida, tipo FROM registros_acceso ORDER BY id DESC LIMIT 100"
-                cur.execute(query)
+                query_base = """
+                    SELECT r.id, r.uid, r.area, r.fecha, r.fecha_salida, r.tipo, t.nombre, t.rol, t.areas, t.activa 
+                    FROM registros_acceso r 
+                    LEFT JOIN tarjetas t ON r.uid = t.uid 
+                """
+                
+                params = []
+                where_clauses = []
+                
+                if hasattr(self, 'date_desde') and self.date_desde and self.date_hasta:
+                    try:
+                        d_desde = self.date_desde.get_date().strftime('%Y-%m-%d 00:00:00')
+                        d_hasta = self.date_hasta.get_date().strftime('%Y-%m-%d 23:59:59')
+                        where_clauses.append("(r.fecha BETWEEN %s AND %s OR r.fecha_salida BETWEEN %s AND %s)")
+                        params.extend([d_desde, d_hasta, d_desde, d_hasta])
+                    except: pass
+                    
+                if where_clauses:
+                    query_base += " WHERE " + " AND ".join(where_clauses)
+                    
+                query_base += " ORDER BY r.id DESC LIMIT 500"
+                
+                cur.execute(query_base, tuple(params))
                 nuevos_logs = cur.fetchall()
                 nuevos_logs.reverse()
 
                 nuevos_render = []
 
                 for log in nuevos_logs:
-                    log_id, uid, area, fecha, fecha_salida, tipo = log
+                    log_id, uid, area, fecha, fecha_salida, tipo, nombre, rol, areas_raw, activa = log
                     
                     area_legible = AREAS.get(str(area), str(area))
                     
@@ -1803,16 +1930,21 @@ class AdminGUI(tk.Tk):
                     ts_ent = fecha_str[11:19] if len(fecha_str) >= 19 else "--:--:--"
                     ts_sal = fs_str[11:19] if len(fs_str) >= 19 else "--:--:--"
 
-                    row = usuarios.buscar_usuario(uid)
-
-                    if not row:
-                        if is_new: self.denegados_visor += 1
-                        data = {"iid": str(log_id), "vals": (uid, "Desconocido", area_legible, "Tarjeta no registrada", ts_ent, ts_sal), "color": "red"}
+                    # Extraer la fecha (prioriza r.fecha, luego r.fecha_salida)
+                    if fecha:
+                        ts_fecha = fecha_str[:10]
+                    elif fecha_salida:
+                        ts_fecha = fs_str[:10]
                     else:
-                        uid_db, nombre, areas_raw, activa = row
+                        ts_fecha = "---"
+
+                    if nombre is None:
+                        if is_new: self.denegados_visor += 1
+                        data = {"iid": str(log_id), "vals": (uid, "Desconocido", area_legible, ts_fecha, "Tarjeta no registrada", ts_ent, ts_sal), "color": "red"}
+                    else:
                         if not activa:
                             if is_new: self.denegados_visor += 1
-                            data = {"iid": str(log_id), "vals": (uid, nombre, area_legible, "Tarjeta inactiva / deshabilitada", ts_ent, ts_sal), "color": "red"}
+                            data = {"iid": str(log_id), "vals": (uid, nombre, area_legible, ts_fecha, "Tarjeta inactiva / deshabilitada", ts_ent, ts_sal), "color": "red"}
                         else:
                             area_id = None
                             for k, v in AREAS.items():
@@ -1824,10 +1956,10 @@ class AdminGUI(tk.Tk):
                             
                             if area_id and area_id not in lista_permisos:
                                 if is_new: self.denegados_visor += 1
-                                data = {"iid": str(log_id), "vals": (uid, nombre, area_legible, "Usuario sin permisos para esta área", ts_ent, ts_sal), "color": "red"}
+                                data = {"iid": str(log_id), "vals": (uid, nombre, area_legible, ts_fecha, "Usuario sin permisos para esta área", ts_ent, ts_sal), "color": "red"}
                             else:
                                 if is_new: self.permitidos_visor += 1
-                                data = {"iid": str(log_id), "vals": (uid, nombre, area_legible, "-", ts_ent, ts_sal), "color": "green"}
+                                data = {"iid": str(log_id), "vals": (uid, nombre, area_legible, ts_fecha, "-", ts_ent, ts_sal), "color": "green"}
                     
                     nuevos_render.append(data)
 
