@@ -25,7 +25,7 @@ BAUDRATE = 115200
 
 # ── Configuracion MySQL (XAMPP) ──────────────────────────────
 DB_CONFIG = {
-    "host":     "192.168.0.10",
+    "host":     "localhost",
     "user":     "root",
     "password": "",
     "database": "rfid_db"
@@ -42,9 +42,9 @@ AREAS = {
     "7": "Comedor",
     "8": "Gerencia",
     "9": "Producción",
-    "10": "Sala de Juntas",
-    "11": "Auditorio"
+    "10": "Sala de Juntas"
 }
+
 
 
 # ── Tablas correspondientes a las áreas ──────────────────────
@@ -58,7 +58,7 @@ AREAS_TABLAS = {
     "7": "comedor",
     "8": "oficina_de_gerencia",
     "9": "oficina_de_produccion",
-    "10": "sala_de_juntas",
-    "11": "auditorio"
+    "10": "sala_de_juntas"
 }
+
 

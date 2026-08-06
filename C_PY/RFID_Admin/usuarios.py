@@ -38,9 +38,31 @@ def listar_usuarios() -> list:
     if not conn: return []
     
     try:
+        import config
         cur = conn.cursor()
         cur.execute("SELECT uid, nombre, rol, areas, fecha_registro, activa, fecha_modificacion FROM tarjetas ORDER BY nombre")
-        return cur.fetchall()
+        filas = cur.fetchall()
+        
+        resultados_limpios = []
+        for fila in filas:
+            uid, nombre, rol, areas, fecha_registro, activa, fecha_modificacion = fila
+            areas_lista = [a.strip() for a in areas.split(",") if a.strip()]
+            areas_validas = [a for a in areas_lista if str(a) in config.AREAS]
+            
+            # Si hubo un cambio (se quitó algún área huérfana)
+            if len(areas_validas) < len(areas_lista):
+                nuevas_areas_str = ", ".join(areas_validas)
+                try:
+                    cur2 = conn.cursor()
+                    cur2.execute("UPDATE tarjetas SET areas=%s WHERE uid=%s", (nuevas_areas_str, uid))
+                    conn.commit()
+                except Exception as e:
+                    print(f"Error limpiando areas huérfanas: {e}")
+                areas = nuevas_areas_str
+                
+            resultados_limpios.append((uid, nombre, rol, areas, fecha_registro, activa, fecha_modificacion))
+            
+        return resultados_limpios
     except Exception as e:
         print(f"Error listando usuarios: {e}")
         return []

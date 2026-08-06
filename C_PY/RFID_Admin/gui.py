@@ -5,7 +5,8 @@ import time
 import json
 import threading
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk
+import custom_alerts as messagebox
 import serial
 import os
 from PIL import Image, ImageTk
@@ -53,6 +54,137 @@ class ToolTip:
         self.tipwindow = None
         if tw:
             tw.destroy()
+
+class TreeviewToolTip:
+    def __init__(self, tree):
+        self.tree = tree
+        self.tipwindow = None
+        self.id = None
+        self.last_item = None
+        self.last_col = None
+        self.tree.bind("<Motion>", self.on_motion, add="+")
+        self.tree.bind("<Leave>", self.leave, add="+")
+
+    def on_motion(self, event):
+        item = self.tree.identify_row(event.y)
+        col = self.tree.identify_column(event.x)
+        if item and col:
+            if item == self.last_item and col == self.last_col:
+                return
+            self.last_item = item
+            self.last_col = col
+            self.schedule(event)
+        else:
+            self.leave()
+
+    def schedule(self, event):
+        self.unschedule()
+        self.id = self.tree.after(500, lambda e=event: self.showtip(e))
+
+    def unschedule(self):
+        id_ = self.id
+        self.id = None
+        if id_:
+            self.tree.after_cancel(id_)
+
+    def leave(self, event=None):
+        self.last_item = None
+        self.last_col = None
+        self.unschedule()
+        self.hidetip()
+
+    def showtip(self, event):
+        item = self.tree.identify_row(event.y)
+        col = self.tree.identify_column(event.x)
+        if not item or not col: return
+        
+        try:
+            col_id = int(col.replace('#', '')) - 1
+            val = str(self.tree.item(item, 'values')[col_id])
+            if len(val) < 40: return # Solo mostrar tooltip si el texto es algo largo
+        except: return
+        
+        x = event.x_root + 15
+        y = event.y_root + 15
+        
+        self.hidetip()
+        self.tipwindow = tw = tk.Toplevel(self.tree)
+        tw.wm_overrideredirect(True)
+        tw.wm_geometry("+%d+%d" % (x, y))
+        
+        import textwrap
+        wrapped_text = "\\n".join(textwrap.wrap(val, width=50))
+        
+        label = tk.Label(tw, text=wrapped_text, justify=tk.LEFT,
+                         background="#ffffe0", relief=tk.SOLID, borderwidth=1,
+                         font=("Segoe UI", "10", "normal"), padx=5, pady=5)
+        label.pack()
+
+class CustomModal(tk.Toplevel):
+    def __init__(self, parent, title_text, geometry_str, show_close_btn=False):
+        super().__init__(parent)
+        self.title(title_text)
+        
+        self.overrideredirect(True)
+        self.configure(bg="#FFFFFF", highlightbackground="#CCCCCC", highlightthickness=1)
+        
+        self.update_idletasks()
+        try:
+            width, height = map(int, geometry_str.split('+')[0].split('x'))
+        except:
+            width, height = 400, 300
+            
+        x = (self.winfo_screenwidth() // 2) - (width // 2)
+        y = (self.winfo_screenheight() // 2) - (height // 2)
+        self.geometry(f'{width}x{height}+{x}+{y}')
+        
+        self.header = tk.Frame(self, bg="#FFFFFF", height=30)
+        self.header.pack(fill=tk.X)
+        
+        self.start_x = 0
+        self.start_y = 0
+        def start_move(event):
+            self.start_x = event.x
+            self.start_y = event.y
+        def move_window(event):
+            x = self.winfo_x() - self.start_x + event.x
+            y = self.winfo_y() - self.start_y + event.y
+            self.geometry(f'+{x}+{y}')
+            
+        self.header.bind("<Button-1>", start_move)
+        self.header.bind("<B1-Motion>", move_window)
+        
+        lbl_title = tk.Label(self.header, text=title_text, bg="#FFFFFF", fg="#1A1A1A", font=("Segoe UI", 10, "bold"))
+        lbl_title.pack(side=tk.LEFT, padx=15, pady=5)
+        lbl_title.bind("<Button-1>", start_move)
+        lbl_title.bind("<B1-Motion>", move_window)
+        
+        if show_close_btn:
+            btn_close = tk.Button(self.header, text="✕", bg="#FFFFFF", fg="#6c757d", font=("Segoe UI", 12), bd=0, cursor="hand2", command=self.destroy)
+            btn_close.pack(side=tk.RIGHT, padx=10)
+            btn_close.bind("<Enter>", lambda e: btn_close.config(bg="#DC3545", fg="white"))
+            btn_close.bind("<Leave>", lambda e: btn_close.config(bg="#FFFFFF", fg="#6c757d"))
+        
+        def on_click_anywhere(event):
+            x, y = event.x_root, event.y_root
+            x0, y0 = self.winfo_rootx(), self.winfo_rooty()
+            w, h = self.winfo_width(), self.winfo_height()
+            
+            if x < x0 or x > x0 + w or y < y0 or y > y0 + h:
+                self.configure(highlightbackground="red", highlightthickness=2)
+                self.header.configure(bg="#ffcccc")
+                self.bell()
+                self.after(150, lambda: self.configure(highlightbackground="#CCCCCC", highlightthickness=1))
+                self.after(150, lambda: self.header.configure(bg="#FFFFFF"))
+                self.focus_force()
+                
+        self.bind("<Button-1>", on_click_anywhere)
+        self.transient(parent)
+        self.grab_set()
+        
+        self.update_idletasks()
+        self.lift()
+        self.attributes("-topmost", True)
 
 # Importar configuraciones y lógica de negocio
 from config import PUERTO, BAUDRATE, AREAS
@@ -125,11 +257,11 @@ class AdminGUI(tk.Tk):
             "fondo_usuarios": os.path.join(base_dir, "Imagenes", "Fondo de usuarios.png"),
             "logo": os.path.join(base_dir, "Imagenes", "Logo.png"),
             "buscar": os.path.join(base_dir, "Imagenes", "Buscar.png"),
-            "activar": os.path.join(base_dir, "Imagenes", "Activar.png"),
+            "activar": os.path.join(base_dir, "Imagenes", "Activar 1.png"),
             "eliminar": os.path.join(base_dir, "Imagenes", "Eliminar.png"),
             "tablero": os.path.join(base_dir, "Imagenes", "Tablero.png"),
             "usuarios_btn": os.path.join(base_dir, "Imagenes", "Usuarios.png"),
-            "visor_btn": os.path.join(base_dir, "Imagenes", "Visor.png"),
+            "visor_btn": os.path.join(base_dir, "Imagenes", "Visor 1.png"),
             "puertas_btn": os.path.join(base_dir, "Imagenes", "Puertas.png"),
             "descarga": os.path.join(base_dir, "Imagenes", "Descarga.png")
         }
@@ -173,8 +305,14 @@ class AdminGUI(tk.Tk):
                 if w > max_width: max_width = w
                 
             max_width = max(max_width, 100)
-            max_width = min(max_width, 600)
-            tree.column(col, width=max_width)
+            
+            if col == "areas":
+                # Limitar el ancho inicial para no desbordar, pero permitir que se estire (stretch)
+                # para llenar el espacio vacío de la pantalla de forma profesional.
+                tree.column(col, width=min(max_width, 450), minwidth=200, stretch=True)
+            else:
+                # Otras columnas se ajustan exacto a su contenido
+                tree.column(col, width=max_width, minwidth=max_width, stretch=False)
 
     def mantener_frame_acciones(self):
         if getattr(self, 'animating_menu', False):
@@ -183,10 +321,17 @@ class AdminGUI(tk.Tk):
             return
 
         # 1. Limpieza si los widgets fueron destruidos al cambiar de vista
-        if hasattr(self, 'pool_frames_u') and self.pool_frames_u and not self.pool_frames_u[0].winfo_exists():
-            delattr(self, 'pool_frames_u')
-        if hasattr(self, 'pool_frames_p') and self.pool_frames_p and not self.pool_frames_p[0].winfo_exists():
-            delattr(self, 'pool_frames_p')
+        try:
+            if hasattr(self, 'pool_frames_u') and self.pool_frames_u and not self.pool_frames_u[0].winfo_exists():
+                delattr(self, 'pool_frames_u')
+        except Exception:
+            if hasattr(self, 'pool_frames_u'): delattr(self, 'pool_frames_u')
+            
+        try:
+            if hasattr(self, 'pool_frames_p') and self.pool_frames_p and not self.pool_frames_p[0].winfo_exists():
+                delattr(self, 'pool_frames_p')
+        except Exception:
+            if hasattr(self, 'pool_frames_p'): delattr(self, 'pool_frames_p')
 
         # 2. Creación del pool si no existe
         if not hasattr(self, 'pool_frames_u') and hasattr(self, 'tree_usuarios') and self.tree_usuarios.winfo_exists():
@@ -427,32 +572,32 @@ class AdminGUI(tk.Tk):
         
         # Botón Tablero (Logs)
         if self.rol_actual in ['Superadmin', 'Admin', 'ingeniero']:
-            btn_tablero = ttk.Button(self.frame_sidebar, text="  Tablero", image=self.cargar_icono("tablero", 16), compound=tk.LEFT, style="Menu.TButton", command=self.mostrar_vista_tablero)
+            btn_tablero = ttk.Button(self.frame_sidebar, text="  Tablero", image=self.cargar_icono("tablero", 16), compound=tk.LEFT, style="Menu.TButton", command=self.mostrar_vista_tablero, takefocus=False)
             btn_tablero.pack(fill=tk.X, pady=2)
         
         # Botón principal Usuarios
-        self.btn_main_usuarios = ttk.Button(self.frame_sidebar, text="  Usuarios", image=self.cargar_icono("usuarios_btn", 16), compound=tk.LEFT, style="Menu.TButton", command=self.toggle_submenu_usuarios)
+        self.btn_main_usuarios = ttk.Button(self.frame_sidebar, text="  Usuarios", image=self.cargar_icono("usuarios_btn", 16), compound=tk.LEFT, style="Menu.TButton", command=self.toggle_submenu_usuarios, takefocus=False)
         self.btn_main_usuarios.pack(fill=tk.X, pady=2)
         
         self.frame_sub_usuarios = tk.Frame(self.frame_sidebar, bg="#1E1F22", height=0)
         self.frame_sub_usuarios.pack_propagate(False)
         
-        btn_reg_u = ttk.Button(self.frame_sub_usuarios, text="  Nuevos Registros", image=self.cargar_icono("accept", 16), compound=tk.LEFT, style="SubMenu.TButton", command=self.mostrar_vista_formulario_usuario)
+        btn_reg_u = ttk.Button(self.frame_sub_usuarios, text="  Nuevos Registros", image=self.cargar_icono("accept", 16), compound=tk.LEFT, style="SubMenu.TButton", command=self.mostrar_vista_formulario_usuario, takefocus=False)
         btn_reg_u.pack(fill=tk.X, pady=2)
 
         # Botón principal Puertas
-        self.btn_main_puertas = ttk.Button(self.frame_sidebar, text="  Puertas", image=self.cargar_icono("puertas_btn", 16), compound=tk.LEFT, style="Menu.TButton", command=self.toggle_submenu_puertas)
+        self.btn_main_puertas = ttk.Button(self.frame_sidebar, text="  Puertas", image=self.cargar_icono("puertas_btn", 16), compound=tk.LEFT, style="Menu.TButton", command=self.toggle_submenu_puertas, takefocus=False)
         self.btn_main_puertas.pack(fill=tk.X, pady=2)
         
         self.frame_sub_puertas = tk.Frame(self.frame_sidebar, bg="#1E1F22", height=0)
         self.frame_sub_puertas.pack_propagate(False)
         
-        btn_add_p = ttk.Button(self.frame_sub_puertas, text="  Agregar", image=self.cargar_icono("accept", 16), compound=tk.LEFT, style="SubMenu.TButton", command=self.mostrar_vista_formulario_puerta)
+        btn_add_p = ttk.Button(self.frame_sub_puertas, text="  Agregar", image=self.cargar_icono("accept", 16), compound=tk.LEFT, style="SubMenu.TButton", command=self.mostrar_vista_formulario_puerta, takefocus=False)
         btn_add_p.pack(fill=tk.X, pady=2)
 
             
         # Botón principal Visor
-        self.btn_main_visor = ttk.Button(self.frame_sidebar, text="  Visor", image=self.cargar_icono("visor_btn", 16), compound=tk.LEFT, style="Menu.TButton", command=self.toggle_submenu_visor)
+        self.btn_main_visor = ttk.Button(self.frame_sidebar, text="  Visor", image=self.cargar_icono("visor_btn", 16), compound=tk.LEFT, style="Menu.TButton", command=self.toggle_submenu_visor, takefocus=False)
         self.btn_main_visor.pack(fill=tk.X, pady=2)
         
         self.frame_sub_visor = tk.Frame(self.frame_sidebar, bg="#1E1F22", height=0)
@@ -460,18 +605,18 @@ class AdminGUI(tk.Tk):
         
         from config import AREAS
         
-        btn_visor_gen = ttk.Button(self.frame_sub_visor, text="  General", style="SubMenu.TButton", command=lambda: self.mostrar_vista_visor("General"))
+        btn_visor_gen = ttk.Button(self.frame_sub_visor, text="  General", style="SubMenu.TButton", command=lambda: self.mostrar_vista_visor("General"), takefocus=False)
         btn_visor_gen.pack(fill=tk.X, pady=2)
         
         for a_id, a_name in AREAS.items():
-            btn_v = ttk.Button(self.frame_sub_visor, text=f"  {a_name}", style="SubMenu.TButton", command=lambda an=a_name: self.mostrar_vista_visor(an))
+            btn_v = ttk.Button(self.frame_sub_visor, text=f"  {a_name}", style="SubMenu.TButton", command=lambda an=a_name: self.mostrar_vista_visor(an), takefocus=False)
             btn_v.pack(fill=tk.X, pady=2)
             
         # Botón Activar en el sidebar principal
-        btn_activar = ttk.Button(self.frame_sidebar, text="  Activar puerta", image=self.cargar_icono("activar", 16), compound=tk.LEFT, style="Menu.TButton", command=self.mostrar_vista_flashear_esp32)
+        btn_activar = ttk.Button(self.frame_sidebar, text="  Activar puerta", image=self.cargar_icono("activar", 16), compound=tk.LEFT, style="Menu.TButton", command=self.mostrar_vista_flashear_esp32, takefocus=False)
         btn_activar.pack(fill=tk.X, pady=5)
         
-        btn_formatear = ttk.Button(self.frame_sidebar, text="  Desactivar puerta", image=self.cargar_icono("eliminar", 16), compound=tk.LEFT, style="Menu.TButton", command=self.mostrar_vista_formatear_esp32)
+        btn_formatear = ttk.Button(self.frame_sidebar, text="  Desactivar puerta", image=self.cargar_icono("eliminar", 16), compound=tk.LEFT, style="Menu.TButton", command=self.mostrar_vista_formatear_esp32, takefocus=False)
         btn_formatear.pack(fill=tk.X, pady=5)
 
         # Sección Lectores Activos
@@ -546,17 +691,17 @@ class AdminGUI(tk.Tk):
                             ultimo_aviso = self.ultimo_aviso_inactividad.get(mac, 0)
                             
                             if estado_previo in (1, -1):
-                                from tkinter import messagebox
+
                                 self.after(1500, lambda n=nombre: messagebox.showwarning("Puerta Inactiva", f"¡Alerta!\n\nLa puerta '{n}' está inactiva.\nPor favor, revise el problema."))
                                 self.ultimo_aviso_inactividad[mac] = current_time
                             else:
                                 if (current_time - ultimo_aviso) >= 900:
-                                    from tkinter import messagebox
+    
                                     self.after(1500, lambda n=nombre: messagebox.showinfo("Recordatorio", f"Recordatorio:\n\nLa puerta '{n}' sigue inactiva.\nPor favor, revise el problema."))
                                     self.ultimo_aviso_inactividad[mac] = current_time
                                     
                         elif activa == 1 and estado_previo == 0:
-                            from tkinter import messagebox
+                            
                             self.after(1500, lambda n=nombre: messagebox.showinfo("Puerta Conectada", f"¡Buenas noticias!\n\nLa puerta '{n}' ya se encuentra activa y conectada nuevamente."))
                             
                         self.estado_anterior_puertas[mac] = activa
@@ -646,10 +791,10 @@ class AdminGUI(tk.Tk):
         self.tree_usuarios_tablero.heading("nombre", text="Nombre")
         self.tree_usuarios_tablero.heading("rol", text="Rol")
         self.tree_usuarios_tablero.heading("areas", text="Áreas Permitidas")
-        self.tree_usuarios_tablero.column("uid", width=150, anchor=tk.W)
-        self.tree_usuarios_tablero.column("nombre", width=250, anchor=tk.W)
-        self.tree_usuarios_tablero.column("rol", width=150, anchor=tk.W)
-        self.tree_usuarios_tablero.column("areas", width=300, anchor=tk.W)
+        self.tree_usuarios_tablero.column("uid", width=80, minwidth=80, anchor=tk.W)
+        self.tree_usuarios_tablero.column("nombre", width=200, minwidth=200, anchor=tk.W)
+        self.tree_usuarios_tablero.column("rol", width=100, minwidth=100, anchor=tk.W)
+        self.tree_usuarios_tablero.column("areas", width=800, minwidth=800, anchor=tk.W)
         
         scroll_ux = ttk.Scrollbar(card_usuarios, orient=tk.HORIZONTAL, command=self.tree_usuarios_tablero.xview)
         scroll_ux.pack(side=tk.BOTTOM, fill=tk.X, padx=(15, 15))
@@ -880,32 +1025,41 @@ class AdminGUI(tk.Tk):
         if getattr(self, 'animating_menu', False): return
         self.animating_menu = True
         
-        if self.menu_visible:
-            target_w = 1
-            step = -20
-        else:
+        target_w = 1 if self.menu_visible else 220
+        start_w = self.frame_sidebar.winfo_width()
+        
+        if not self.menu_visible:
             self.frame_sidebar.config(width=1)
             self.frame_sidebar.pack(side=tk.LEFT, fill=tk.Y, before=self.frame_main)
-            target_w = 220
-            step = 20
             
-        def animate(current_w):
-            if (step > 0 and current_w < target_w) or (step < 0 and current_w > target_w):
-                current_w += step
-                if current_w < 1: current_w = 1
-                if current_w > 220: current_w = 220
-                self.frame_sidebar.config(width=current_w)
-                self.after(10, animate, current_w)
-            else:
-                if step < 0:
+        import time
+        start_time = time.time()
+        duration = 0.15  # 150 milisegundos
+        
+        def animate():
+            now = time.time()
+            elapsed = now - start_time
+            
+            if elapsed >= duration:
+                self.frame_sidebar.config(width=target_w)
+                if target_w == 1:
                     self.frame_sidebar.pack_forget()
                     self.menu_visible = False
                 else:
-                    self.frame_sidebar.config(width=220)
                     self.menu_visible = True
                 self.animating_menu = False
+                return
                 
-        animate(self.frame_sidebar.winfo_width())
+            # Calcular progreso de 0.0 a 1.0 usando ease-out (1 - (1-t)^2)
+            t = elapsed / duration
+            ease_progress = 1 - (1 - t) * (1 - t)
+            
+            current_w = int(start_w + (target_w - start_w) * ease_progress)
+            self.frame_sidebar.config(width=current_w)
+            
+            self.after(10, animate)
+            
+        animate()
 
     def _check_sidebar_close(self, event):
         if not self.menu_visible: return
@@ -1090,13 +1244,13 @@ class AdminGUI(tk.Tk):
         self.tree_usuarios.heading("modificacion", text="ÚLTIMA MODIFICACIÓN")
         self.tree_usuarios.heading("acciones", text="ACCIONES")
         
-        self.tree_usuarios.column("uid", width=100, anchor="center")
-        self.tree_usuarios.column("nombre", width=180, anchor="center")
-        self.tree_usuarios.column("rol", width=150, anchor="center")
-        self.tree_usuarios.column("areas", width=250, anchor="center")
-        self.tree_usuarios.column("fecha", width=150, anchor="center")
-        self.tree_usuarios.column("modificacion", width=150, anchor="center")
-        self.tree_usuarios.column("acciones", width=120, anchor="center")
+        self.tree_usuarios.column("uid", width=80, minwidth=80, anchor="center")
+        self.tree_usuarios.column("nombre", width=180, minwidth=180, anchor="center")
+        self.tree_usuarios.column("rol", width=100, minwidth=100, anchor="center")
+        self.tree_usuarios.column("areas", width=800, minwidth=800, anchor="center")
+        self.tree_usuarios.column("fecha", width=150, minwidth=150, anchor="center")
+        self.tree_usuarios.column("modificacion", width=150, minwidth=150, anchor="center")
+        self.tree_usuarios.column("acciones", width=120, minwidth=120, anchor="center")
 
         self.tree_usuarios.tag_configure("hover", background="#0A8504", foreground="#FFFFFF")
 
@@ -1115,6 +1269,8 @@ class AdminGUI(tk.Tk):
         self.tree_usuarios.bind("<ButtonRelease-1>", self.on_click_tree_usuarios)
         self.tree_usuarios.bind("<Button-3>", self.on_right_click_tree_usuarios)
         
+        TreeviewToolTip(self.tree_usuarios)
+        
         self.cargar_tabla_usuarios()
         
     def mostrar_modal_asignacion_masiva(self):
@@ -1124,12 +1280,7 @@ class AdminGUI(tk.Tk):
         if not roles:
             return messagebox.showinfo("Información", "No hay roles registrados en el sistema todavía.")
             
-        dlg = tk.Toplevel(self)
-        dlg.title("Asignación Masiva por Rol")
-        dlg.geometry("400x300")
-        dlg.configure(bg="#FFFFFF")
-        dlg.transient(self)
-        dlg.grab_set()
+        dlg = CustomModal(self, "Asignación Masiva por Rol", "400x300")
         
         tk.Label(dlg, text="⚡ Asignación Masiva", font=("Poppins", 14, "bold"), bg="#FFFFFF", fg="#FF9800").pack(pady=(20, 10))
         tk.Label(dlg, text="Selecciona el rol que recibirá acceso:", bg="#FFFFFF", fg="#333333", font=("Poppins", 10)).pack(anchor="w", padx=30)
@@ -1613,21 +1764,7 @@ class AdminGUI(tk.Tk):
     def agregar_area_principal(self):
         from areas_manager import crear_nueva_area
         
-        dlg = tk.Toplevel(self)
-        dlg.title("Nueva Área")
-        dlg.geometry("380x220")
-        dlg.configure(bg="#FFFFFF")
-        dlg.transient(self)
-        dlg.grab_set()
-        
-        # Centrar en la ventana padre
-        x = self.winfo_x() + (self.winfo_width() // 2) - (380 // 2)
-        y = self.winfo_y() + (self.winfo_height() // 2) - (220 // 2)
-        dlg.geometry(f"+{x}+{y}")
-        
-        # Eliminar el ícono por defecto
-        try: dlg.wm_attributes("-toolwindow", True)
-        except: pass
+        dlg = CustomModal(self, "Agregar Nueva Área", "350x250")
         
         lbl_titulo = tk.Label(dlg, text="Registrar Nueva Área", font=("Poppins", 14, "bold"), bg="#FFFFFF", fg="#033966")
         lbl_titulo.pack(pady=(20, 10))
@@ -1838,7 +1975,7 @@ class AdminGUI(tk.Tk):
         self.actualizar_logs_visor()
 
     def descargar_pdf_visor(self):
-        from tkinter import filedialog, messagebox
+        from tkinter import filedialog
         import threading
         
         ruta = filedialog.asksaveasfilename(
@@ -1995,19 +2132,8 @@ class AdminGUI(tk.Tk):
         import subprocess
         import threading
         
-        top = tk.Toplevel(self)
-        top.title("Activar puerta")
-        top.geometry("500x320")
-        top.configure(bg="#F4F6F9")
-        top.transient(self)
-        top.grab_set()
-        try:
-            import os
-            icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Imagenes", "G.ico")
-            if os.path.exists(icon_path):
-                top.iconbitmap(icon_path)
-        except: pass
-
+        top = CustomModal(self, "Activar puerta", "500x300", show_close_btn=True)
+        
         lbl_titulo = tk.Label(top, text="Activar puerta", font=("Segoe UI", 14, "bold"), bg="#F4F6F9", fg="#1A1A1A")
         lbl_titulo.pack(pady=(25, 10))
         
@@ -2052,6 +2178,68 @@ class AdminGUI(tk.Tk):
                 except: pass
                 self.serial_conn = None
             
+            def pre_check_task():
+                import io, sys, re
+                top.after(0, lambda: lbl_status.config(text="Verificando si el lector ya está configurado...", fg="#007BFF"))
+                old_stdout = sys.stdout
+                old_stderr = sys.stderr
+                string_io = io.StringIO()
+                sys.stdout = string_io
+                sys.stderr = string_io
+                
+                try:
+                    import esptool # type: ignore
+                    esptool.main(["--port", puerto, "--baud", "460800", "read_mac"])
+                except Exception:
+                    pass
+                finally:
+                    sys.stdout = old_stdout
+                    sys.stderr = old_stderr
+                    
+                output = string_io.getvalue()
+                mac_match = re.search(r"MAC:\s*([0-9a-fA-F:]+)", output)
+                
+                if mac_match:
+                    mac = mac_match.group(1).upper()
+                    from database import conectar_db
+                    conn = conectar_db()
+                    registrada = False
+                    msg_info = ""
+                    if conn:
+                        try:
+                            cur = conn.cursor()
+                            cur.execute("SELECT nombre, area_id, tipo FROM puertas WHERE mac_address=%s", (mac,))
+                            row = cur.fetchone()
+                            if row:
+                                p_nombre, area_id, p_tipo = row
+                                import config
+                                area_nombre = config.AREAS.get(area_id, "Desconocida")
+                                registrada = True
+                                msg_info = f"Este lector ya está configurado en el sistema:\n\nNombre: {p_nombre}\nÁrea: {area_nombre}\nTipo: {p_tipo}\n\n¿Estás seguro de que deseas sobreescribirlo para configurarlo de nuevo?"
+                        except: pass
+                        finally: conn.close()
+                        
+                    if registrada:
+                        top.after(0, lambda: ask_override(msg_info))
+                        return
+                        
+                top.after(0, start_flash_thread)
+
+            def ask_override(msg):
+                progress_bar.stop()
+                if messagebox.askyesno("Lector Ya Configurado", msg, parent=top):
+                    start_flash_thread()
+                else:
+                    lbl_status.config(text="Activación cancelada.", fg="#1A1A1A")
+                    btn_flash.config(state=tk.NORMAL)
+                    
+            def start_flash_thread():
+                lbl_status.config(text="Conectando con el lector...", fg="#007BFF")
+                progress_bar.config(mode="indeterminate")
+                progress_bar.start(15)
+                import threading
+                threading.Thread(target=thread_task, daemon=True).start()
+
             def thread_task():
                 import os
                 import sys
@@ -2169,7 +2357,8 @@ class AdminGUI(tk.Tk):
                     btn_flash.config(state=tk.NORMAL)
                     self.pausar_serial = False
                     
-            threading.Thread(target=thread_task, daemon=True).start()
+            import threading
+            threading.Thread(target=pre_check_task, daemon=True).start()
             
         btn_flash = tk.Button(top, text="Activar puerta", bg="#28A745", fg="white", font=("Segoe UI", 10, "bold"), bd=0, padx=20, pady=10, command=ejecutar_flash)
         btn_flash.pack(pady=(0, 20))
@@ -2191,12 +2380,7 @@ class AdminGUI(tk.Tk):
             return
             
         # Modal de registro
-        dlg = tk.Toplevel(self)
-        dlg.title("Completar Activación")
-        dlg.geometry("450x450")
-        dlg.configure(bg="#F4F6F9")
-        dlg.transient(self)
-        dlg.grab_set()
+        dlg = CustomModal(self, "Completar Activación", "450x450")
         
         tk.Label(dlg, text="Lector Activado Exitosamente", font=("Segoe UI", 14, "bold"), bg="#F4F6F9", fg="#007BFF").pack(pady=(20, 5))
         tk.Label(dlg, text=f"MAC Detectada: {mac_detectada}", font=("Segoe UI", 10, "bold"), bg="#F4F6F9", fg="#28A745").pack(pady=(0, 20))
@@ -2252,7 +2436,7 @@ class AdminGUI(tk.Tk):
         
         tk.Label(f_campos, text="Tipo de puerta:", bg="#F4F6F9", font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(15, 2))
         var_tipo = tk.StringVar(value="Entrada")
-        cb_tipo = ttk.Combobox(f_campos, textvariable=var_tipo, values=["Entrada", "Salida", "Ambos"], state="readonly", font=("Segoe UI", 10))
+        cb_tipo = ttk.Combobox(f_campos, textvariable=var_tipo, values=["Entrada", "Salida"], state="readonly", font=("Segoe UI", 10))
         cb_tipo.pack(fill=tk.X)
         
         def guardar_puerta():
@@ -2288,6 +2472,23 @@ class AdminGUI(tk.Tk):
             
             tipo = var_tipo.get()
             
+            # Validar que el tipo de puerta no esté ya ocupado en esa área
+            if area_id:
+                from database import conectar_db
+                conn = conectar_db()
+                if conn:
+                    try:
+                        cur = conn.cursor()
+                        cur.execute("SELECT COUNT(*) FROM puertas WHERE area_id=%s AND tipo=%s", (area_id, tipo))
+                        count = cur.fetchone()[0]
+                        if count > 0:
+                            messagebox.showerror("Error", f"El área seleccionada ya tiene una puerta asignada como '{tipo}'.\n\nPor favor, selecciona otro tipo de puerta (p. ej. si ya hay Entrada, elige Salida).", parent=dlg)
+                            return
+                    except Exception as e:
+                        print(f"Error validando tipo de puerta: {e}")
+                    finally:
+                        conn.close()
+            
             import puertas
             ok = puertas.registrar_puerta(mac_detectada, nombre, area_id, tipo)
             if ok:
@@ -2308,19 +2509,7 @@ class AdminGUI(tk.Tk):
     def mostrar_vista_formatear_esp32(self):
         import serial.tools.list_ports
         import threading
-        
-        top = tk.Toplevel(self)
-        top.title("Desactivar puerta")
-        top.geometry("500x320")
-        top.configure(bg="#F4F6F9")
-        top.transient(self)
-        top.grab_set()
-        try:
-            import os
-            icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Imagenes", "G.ico")
-            if os.path.exists(icon_path):
-                top.iconbitmap(icon_path)
-        except: pass
+        top = CustomModal(self, "Desactivar puerta", "500x320", show_close_btn=True)
 
         lbl_titulo = tk.Label(top, text="Desactivar puerta", font=("Segoe UI", 14, "bold"), bg="#F4F6F9", fg="#9C0303")
         lbl_titulo.pack(pady=(25, 10))
@@ -2350,9 +2539,22 @@ class AdminGUI(tk.Tk):
         def ejecutar_formateo():
             puerto = var_puerto.get()
             if not puerto:
-                from tkinter import messagebox
+                
                 messagebox.showerror("Error", "Seleccione un puerto COM", parent=top)
                 return
+            
+            
+            eliminar_de_bd = messagebox.askyesnocancel(
+                "Opciones de Desactivación",
+                "¿Desea eliminar la puerta de la base de datos además de desactivarla (formatearla)?\n\n"
+                "Sí: Desactivar y eliminar de la base de datos.\n"
+                "No: Solo desactivar (formatear) sin eliminar de la BD.\n"
+                "Cancelar: Abortar operación.",
+                parent=top
+            )
+            
+            if eliminar_de_bd is None:
+                return  # Usuario canceló
             
             btn_format.config(state=tk.DISABLED)
             lbl_status.config(text=f"Liberando puerto...", fg="#007BFF")
@@ -2370,7 +2572,7 @@ class AdminGUI(tk.Tk):
                 import sys
                 import io
                 import re
-                from tkinter import messagebox
+                
                 import puertas
                 
                 top.after(0, lambda: lbl_status.config(text="Conectando y borrando memoria..."))
@@ -2416,13 +2618,18 @@ class AdminGUI(tk.Tk):
                     mac_match = re.search(r"MAC:\s*([0-9a-fA-F:]+)", redirector.full_log)
                     if mac_match:
                         mac_erased = mac_match.group(1).upper()
-                        puertas.eliminar_puerta(mac_erased)
+                        if eliminar_de_bd:
+                            puertas.eliminar_puerta(mac_erased)
+                            msg = f"El lector ha sido formateado exitosamente.\n\nLa puerta con MAC {mac_erased} fue eliminada del sistema."
+                        else:
+                            msg = f"El lector ha sido formateado exitosamente.\n\nLa puerta con MAC {mac_erased} se mantuvo en la base de datos."
+                            
                         top.after(0, lambda: lbl_status.config(text=f"Formateado! MAC: {mac_erased}", fg="#28A745"))
                         if self.vista_actual == "puertas":
-                            top.after(0, self.mostrar_vista_puertas)
+                            top.after(0, self.cargar_tabla_puertas)
                             
                         def on_success():
-                            messagebox.showinfo("Lector Desactivado", f"El lector ha sido formateado exitosamente.\\n\\nLa puerta con MAC {mac_erased} fue eliminada del sistema.", parent=top)
+                            messagebox.showinfo("Lector Desactivado", msg, parent=top)
                             top.destroy()
                         top.after(500, on_success)
                     else:
@@ -2443,13 +2650,18 @@ class AdminGUI(tk.Tk):
                         mac_match = re.search(r"MAC:\s*([0-9a-fA-F:]+)", redirector.full_log)
                         if mac_match:
                             mac_erased = mac_match.group(1).upper()
-                            puertas.eliminar_puerta(mac_erased)
+                            if eliminar_de_bd:
+                                puertas.eliminar_puerta(mac_erased)
+                                msg2 = f"El lector ha sido formateado exitosamente.\n\nLa puerta con MAC {mac_erased} fue eliminada del sistema."
+                            else:
+                                msg2 = f"El lector ha sido formateado exitosamente.\n\nLa puerta con MAC {mac_erased} se mantuvo en la base de datos."
+                                
                             top.after(0, lambda: lbl_status.config(text=f"Formateado! MAC: {mac_erased}", fg="#28A745"))
                             if self.vista_actual == "puertas":
-                                top.after(0, self.mostrar_vista_puertas)
+                                top.after(0, self.cargar_tabla_puertas)
                                 
                             def on_success2():
-                                messagebox.showinfo("Lector Desactivado", f"El lector ha sido formateado exitosamente.\\n\\nLa puerta con MAC {mac_erased} fue eliminada del sistema.", parent=top)
+                                messagebox.showinfo("Lector Desactivado", msg2, parent=top)
                                 top.destroy()
                             top.after(500, on_success2)
                         else:

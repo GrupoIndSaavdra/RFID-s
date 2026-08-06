@@ -43,14 +43,48 @@ def listar_puertas() -> list:
         conn.close()
 
 def eliminar_puerta(mac: str) -> bool:
-    """Elimina permanentemente un ESP32."""
+    """Elimina permanentemente un ESP32. Si es la última puerta de su área, elimina el área completa."""
     conn = conectar_db()
     if not conn: return False
     
     try:
         cur = conn.cursor()
+        
+        # 1. Obtener el area_id de la puerta antes de borrarla
+        cur.execute("SELECT area_id FROM puertas WHERE mac_address=%s", (mac,))
+        res = cur.fetchone()
+        area_id = str(res[0]) if res else None
+        
+        # 2. Eliminar la puerta
         cur.execute("DELETE FROM puertas WHERE mac_address=%s", (mac,))
         conn.commit()
+        
+        # 3. Si se eliminó exitosamente, revisar si el área se quedó vacía
+        if area_id:
+            cur.execute("SELECT COUNT(*) FROM puertas WHERE area_id=%s", (area_id,))
+            count = cur.fetchone()[0]
+            if count == 0:
+                # No quedan puertas para esta área, así que eliminamos el área (Opción A)
+                import config
+                import areas_manager
+                
+                nombre_tabla = config.AREAS_TABLAS.get(area_id)
+                if nombre_tabla:
+                    try:
+                        cur.execute(f"DROP TABLE IF EXISTS {nombre_tabla}")
+                        conn.commit()
+                    except Exception as e:
+                        print(f"Error borrando tabla del área {nombre_tabla}: {e}")
+                
+                # Remover de los diccionarios en memoria
+                if area_id in config.AREAS:
+                    del config.AREAS[area_id]
+                if area_id in config.AREAS_TABLAS:
+                    del config.AREAS_TABLAS[area_id]
+                
+                # Guardar en config.py
+                areas_manager.actualizar_config_archivo()
+                
         return True
     except Exception as e:
         print(f"Error eliminando puerta: {e}")
