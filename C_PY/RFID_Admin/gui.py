@@ -120,6 +120,12 @@ class TreeviewToolTip:
                          font=("Segoe UI", "10", "normal"), padx=5, pady=5)
         label.pack()
 
+    def hidetip(self):
+        tw = getattr(self, "tipwindow", None)
+        self.tipwindow = None
+        if tw:
+            tw.destroy()
+
 class CustomModal(tk.Toplevel):
     def __init__(self, parent, title_text, geometry_str, show_close_btn=False):
         super().__init__(parent)
@@ -766,7 +772,7 @@ class AdminGUI(tk.Tk):
         tk.Label(frame_filtro, text="Filtrar por Área:", font=("Segoe UI", 10, "bold"), bg="#FFFFFF").pack(side=tk.LEFT, padx=(10, 5))
         
         from config import AREAS
-        opciones_area = ["Todas"] + [f"{k} - {v}" for k, v in AREAS.items()]
+        opciones_area = ["Todas"] + sorted(AREAS.values())
         
         self.area_filtro_tablero = tk.StringVar(value="Todas")
         cb_area = ttk.Combobox(frame_filtro, textvariable=self.area_filtro_tablero, values=opciones_area, state="readonly", font=("Segoe UI", 10), width=30)
@@ -854,8 +860,12 @@ class AdminGUI(tk.Tk):
             
             filtro_texto = self.area_filtro_tablero.get()
             filtro_id = None
-            if filtro_texto != "Todas" and " - " in filtro_texto:
-                filtro_id = filtro_texto.split(" - ")[0]
+            if filtro_texto != "Todas":
+                import config
+                for k, v in config.AREAS.items():
+                    if v == filtro_texto:
+                        filtro_id = str(k)
+                        break
                 
             for u in usuarios_activos:
                 uid, nombre, rol, areas = u
@@ -888,8 +898,12 @@ class AdminGUI(tk.Tk):
                 
                 filtro_texto = self.area_filtro_tablero.get()
                 filtro_id = None
-                if filtro_texto != "Todas" and " - " in filtro_texto:
-                    filtro_id = filtro_texto.split(" - ")[0]
+                if filtro_texto != "Todas":
+                    import config
+                    for k, v in config.AREAS.items():
+                        if v == filtro_texto:
+                            filtro_id = str(k)
+                            break
                 
                 # Fetch latest 50 logs every time to catch updates
                 query = """
@@ -901,8 +915,7 @@ class AdminGUI(tk.Tk):
                 if filtro_id:
                     query += " WHERE r.area = %s "
                     params.append(filtro_id)
-                    
-                query += " ORDER BY r.id DESC LIMIT 50"
+                query += " ORDER BY COALESCE(r.fecha_salida, r.fecha) DESC LIMIT 50"
                 
                 cur.execute(query, tuple(params))
                 nuevos_logs = cur.fetchall()
@@ -946,6 +959,7 @@ class AdminGUI(tk.Tk):
             
             if self.tree_logs.exists(iid):
                 self.tree_logs.item(iid, values=vals, tags=(tag_color,))
+                self.tree_logs.move(iid, "", 0)
             else:
                 self.tree_logs.insert("", 0, iid=iid, values=vals, tags=(tag_color,))
             
@@ -1182,7 +1196,7 @@ class AdminGUI(tk.Tk):
         
         tk.Label(frame_busqueda, text="Filtrar por Área:", bg="#FFFFFF", font=("Poppins", 10, "bold")).pack(side=tk.LEFT, padx=(20, 5))
         
-        a_list = ["Todas"] + [f"{k} - {v}" for k,v in AREAS.items()]
+        a_list = ["Todas"] + sorted(AREAS.values())
         self.var_area_filtro = tk.StringVar(value="Todas")
         
         btn_filtro = tk.Button(frame_busqueda, text="Todas ▼", bg="#033966", fg="#FFFFFF", font=("Poppins", 10, "bold"), bd=0, activebackground="#0A8504", activeforeground="#FFFFFF")
@@ -1224,7 +1238,7 @@ class AdminGUI(tk.Tk):
         
         def select_filtro(val):
             self.var_area_filtro.set(val)
-            btn_filtro.config(text=f"{val.split(' - ')[0]} ▼")
+            btn_filtro.config(text=f"{val} ▼")
             toggle_filtro()
             self.cargar_tabla_usuarios()
             
@@ -1291,7 +1305,7 @@ class AdminGUI(tk.Tk):
         
         tk.Label(dlg, text="Selecciona el área a asignar:", bg="#FFFFFF", fg="#333333", font=("Poppins", 10)).pack(anchor="w", padx=30, pady=(15, 0))
         
-        areas_list = [f"{k} - {v}" for k, v in AREAS.items()]
+        areas_list = sorted(AREAS.values())
         cb_areas = ttk.Combobox(dlg, values=areas_list, font=("Poppins", 10), state="readonly")
         cb_areas.pack(fill=tk.X, padx=30, pady=5)
         if areas_list: cb_areas.current(0)
@@ -1301,7 +1315,12 @@ class AdminGUI(tk.Tk):
             area_sel = cb_areas.get()
             if not rol or not area_sel: return
             
-            area_id = area_sel.split(" - ")[0]
+            area_id = None
+            from config import AREAS
+            for k, v in AREAS.items():
+                if v == area_sel:
+                    area_id = str(k)
+                    break
             
             if messagebox.askyesno("Confirmar", f"¿Dar acceso al área '{area_sel}' a TODOS los '{rol}'?"):
                 afectados = usuarios.asignar_area_masiva(rol, area_id)
@@ -1339,8 +1358,12 @@ class AdminGUI(tk.Tk):
             area_filtro = self.var_area_filtro.get()
             
         area_id_filtro = None
-        if area_filtro != "Todas" and " - " in area_filtro:
-            area_id_filtro = area_filtro.split(" - ")[0]
+        if area_filtro != "Todas":
+            import config
+            for k, v in config.AREAS.items():
+                if v == area_filtro:
+                    area_id_filtro = str(k)
+                    break
         
         for t in usuarios.listar_usuarios():
             if t[5]: # activa (now t[5] because rol is t[2])
@@ -1615,12 +1638,11 @@ class AdminGUI(tk.Tk):
 
         tk.Label(top, text="Área:", bg="#FFFFFF", fg="#000000", font=("Poppins", 10)).pack(anchor="w", padx=40, pady=(10, 0))
         
-        a_list = [f"{k} - {v}" for k,v in AREAS.items()]
+        a_list = sorted(AREAS.values())
         val_inicial = "Seleccionar Área"
         if area_editar:
             for val in a_list:
-                # Comparamos exactamente con el nombre del área
-                if len(val.split(" - ", 1)) > 1 and area_editar == val.split(" - ", 1)[1]:
+                if area_editar == val:
                     val_inicial = val
                     break
         elif a_list:
@@ -1703,7 +1725,12 @@ class AdminGUI(tk.Tk):
             tipo_sel = var_tipo_sel.get()
             if not mac or not nombre or area_sel == "Seleccionar Área" or not tipo_sel:
                 return messagebox.showerror("Error", "Todos los campos son obligatorios")
-            area_id = area_sel.split(" - ")[0]
+            area_id = None
+            from config import AREAS
+            for k, v in AREAS.items():
+                if v == area_sel:
+                    area_id = str(k)
+                    break
 
             if puertas.registrar_puerta(mac, nombre, area_id, tipo_sel):
                 messagebox.showinfo("Éxito", "Puerta guardada correctamente.")
@@ -1818,8 +1845,39 @@ class AdminGUI(tk.Tk):
         def _connect_task():
             try:
                 import serial
-                conn = serial.Serial(PUERTO, BAUDRATE, timeout=1)
-                self.after(0, lambda: self._on_serial_connected(conn))
+                import serial.tools.list_ports
+                conn = None
+                try:
+                    conn = serial.Serial()
+                    conn.port = PUERTO
+                    conn.baudrate = BAUDRATE
+                    conn.timeout = 1
+                    conn.setDTR(False)
+                    conn.setRTS(False)
+                    conn.open()
+                except:
+                    pass
+                
+                if not conn or not conn.is_open:
+                    puertos = serial.tools.list_ports.comports()
+                    for p in puertos:
+                        if p.device != PUERTO:
+                            try:
+                                conn = serial.Serial()
+                                conn.port = p.device
+                                conn.baudrate = BAUDRATE
+                                conn.timeout = 1
+                                conn.setDTR(False)
+                                conn.setRTS(False)
+                                conn.open()
+                                break
+                            except:
+                                pass
+                
+                if conn:
+                    self.after(0, lambda: self._on_serial_connected(conn))
+                else:
+                    self.after(0, self._on_serial_failed)
             except:
                 self.after(0, self._on_serial_failed)
                 
@@ -1846,7 +1904,8 @@ class AdminGUI(tk.Tk):
                         data = json.loads(linea)
                         if isinstance(data, dict) and "uid" in data:
                             self.uid_escaneado_reciente = data["uid"].upper()
-                    except: pass
+                    except:
+                        print(f"[ESP32 RAW LOG]: {linea}")
             except: 
                 time.sleep(1)
                 break
@@ -2043,7 +2102,7 @@ class AdminGUI(tk.Tk):
                 if where_clauses:
                     query_base += " WHERE " + " AND ".join(where_clauses)
                     
-                query_base += " ORDER BY r.id DESC LIMIT 500"
+                query_base += " ORDER BY COALESCE(r.fecha_salida, r.fecha) DESC LIMIT 500"
                 
                 cur.execute(query_base, tuple(params))
                 nuevos_logs = cur.fetchall()
@@ -2119,6 +2178,7 @@ class AdminGUI(tk.Tk):
 
             if self.tree_visor.exists(iid):
                 self.tree_visor.item(iid, values=vals, tags=(color,))
+                self.tree_visor.move(iid, "", 0)
             else:
                 self.tree_visor.insert("", 0, iid=iid, values=vals, tags=(color,))
 
@@ -2180,7 +2240,7 @@ class AdminGUI(tk.Tk):
             
             def pre_check_task():
                 import io, sys, re
-                top.after(0, lambda: lbl_status.config(text="Verificando si el lector ya está configurado...", fg="#007BFF"))
+                top.after(0, lambda: lbl_status.config(text="Verificando si la puerta ya está configurada...", fg="#007BFF"))
                 old_stdout = sys.stdout
                 old_stderr = sys.stderr
                 string_io = io.StringIO()
@@ -2215,7 +2275,7 @@ class AdminGUI(tk.Tk):
                                 import config
                                 area_nombre = config.AREAS.get(area_id, "Desconocida")
                                 registrada = True
-                                msg_info = f"Este lector ya está configurado en el sistema:\n\nNombre: {p_nombre}\nÁrea: {area_nombre}\nTipo: {p_tipo}\n\n¿Estás seguro de que deseas sobreescribirlo para configurarlo de nuevo?"
+                                msg_info = f"Esta puerta ya está configurada en el sistema:\n\nNombre: {p_nombre}\nÁrea: {area_nombre}\nTipo: {p_tipo}\n\n¿Estás seguro de que deseas sobreescribirlo\npara configurarlo de nuevo?"
                         except: pass
                         finally: conn.close()
                         
@@ -2227,14 +2287,46 @@ class AdminGUI(tk.Tk):
 
             def ask_override(msg):
                 progress_bar.stop()
-                if messagebox.askyesno("Lector Ya Configurado", msg, parent=top):
+                
+                dlg = tk.Toplevel(top)
+                dlg.title("Puerta Ya Configurada")
+                dlg.geometry("450x250")
+                dlg.transient(top)
+                dlg.grab_set()
+                dlg.resizable(False, False)
+                dlg.attributes("-topmost", True)
+                dlg.focus_force()
+                
+                dlg.update_idletasks()
+                x = top.winfo_rootx() + (top.winfo_width() - 450) // 2
+                y = top.winfo_rooty() + (top.winfo_height() - 250) // 2
+                dlg.geometry(f"+{x}+{y}")
+                
+                lbl = tk.Label(dlg, text=msg, justify="left", font=("Arial", 11))
+                lbl.pack(padx=20, pady=20)
+                
+                btn_frame = tk.Frame(dlg)
+                btn_frame.pack(pady=10)
+                
+                def on_yes():
+                    dlg.destroy()
                     start_flash_thread()
-                else:
+                    
+                def on_no():
+                    dlg.destroy()
                     lbl_status.config(text="Activación cancelada.", fg="#1A1A1A")
                     btn_flash.config(state=tk.NORMAL)
                     
+                dlg.protocol("WM_DELETE_WINDOW", on_no)
+                
+                btn_yes = tk.Button(btn_frame, text="Sí", width=10, command=on_yes, bg="#28A745", fg="white", font=("Arial", 10, "bold"))
+                btn_yes.pack(side="left", padx=10)
+                
+                btn_no = tk.Button(btn_frame, text="No", width=10, command=on_no, bg="#DC3545", fg="white", font=("Arial", 10, "bold"))
+                btn_no.pack(side="right", padx=10)
+                    
             def start_flash_thread():
-                lbl_status.config(text="Conectando con el lector...", fg="#007BFF")
+                lbl_status.config(text="Conectando con la puerta...", fg="#007BFF")
                 progress_bar.config(mode="indeterminate")
                 progress_bar.start(15)
                 import threading
@@ -2262,7 +2354,7 @@ class AdminGUI(tk.Tk):
                     top.after(0, lambda: btn_flash.config(state=tk.NORMAL))
                     return
                 
-                top.after(0, lambda: lbl_status.config(text="Conectando con el lector..."))
+                top.after(0, lambda: lbl_status.config(text="Conectando con la puerta..."))
                 
                 class FlashMonitor(io.StringIO):
                     def __init__(self, lbl, p_var, root, p_bar):
@@ -2296,7 +2388,7 @@ class AdminGUI(tk.Tk):
                                 self.root.after(0, lambda: self.lbl.config(text="Verificando instalación..."))
                                 self.root.after(0, lambda: self.p_var.set(100))
                             elif "Hard resetting" in self.line_buf:
-                                self.root.after(0, lambda: self.lbl.config(text="Reiniciando lector..."))
+                                self.root.after(0, lambda: self.lbl.config(text="Reiniciando puerta..."))
                                 self.root.after(0, lambda: self.p_var.set(100))
                                 
                             parts = self.line_buf.replace('\r', '\n').split('\n')
@@ -2332,7 +2424,7 @@ class AdminGUI(tk.Tk):
                     
                     sys.stdout = old_stdout
                     sys.stderr = old_stderr
-                    top.after(0, lambda: lbl_status.config(text="¡Lector Activado Exitosamente!", fg="#28A745"))
+                    top.after(0, lambda: lbl_status.config(text="¡Puerta Activada Exitosamente!", fg="#28A745"))
                     self.after(500, lambda: self.mostrar_registro_puerta_post_flash(top, redirector.full_log))
                     
                 except SystemExit as e:
@@ -2340,11 +2432,11 @@ class AdminGUI(tk.Tk):
                     sys.stderr = old_stderr
                     top.after(0, lambda: progress_bar.stop())
                     if e.code == 0 or e.code is None:
-                        top.after(0, lambda: lbl_status.config(text="¡Lector Activado Exitosamente!", fg="#28A745"))
+                        top.after(0, lambda: lbl_status.config(text="¡Puerta Activada Exitosamente!", fg="#28A745"))
                         self.after(500, lambda: self.mostrar_registro_puerta_post_flash(top, redirector.full_log))
                     else:
                         top.after(0, lambda: lbl_status.config(text=f"Error de activación (Código {e.code})", fg="#9C0303"))
-                        messagebox.showerror("Error", "Ocurrió un problema al activar el lector.", parent=top)
+                        messagebox.showerror("Error", "Ocurrió un problema al activar la puerta.", parent=top)
                 except Exception as e:
                     sys.stdout = old_stdout
                     sys.stderr = old_stderr
@@ -2423,7 +2515,7 @@ class AdminGUI(tk.Tk):
         
         def actualizar_opciones_area():
             import config
-            opciones = [f"{k} - {v}" for k, v in config.AREAS.items()]
+            opciones = sorted(config.AREAS.values())
             cb_area.config(values=opciones)
             
             curr = var_area.get()
@@ -2468,7 +2560,12 @@ class AdminGUI(tk.Tk):
                     return
             else:
                 area_str = var_area.get()
-                area_id = area_str.split(" - ")[0] if " - " in area_str else ""
+                area_id = ""
+                import config
+                for k, v in config.AREAS.items():
+                    if v == area_str:
+                        area_id = str(k)
+                        break
             
             tipo = var_tipo.get()
             
@@ -2546,10 +2643,9 @@ class AdminGUI(tk.Tk):
             
             eliminar_de_bd = messagebox.askyesnocancel(
                 "Opciones de Desactivación",
-                "¿Desea eliminar la puerta de la base de datos además de desactivarla (formatearla)?\n\n"
-                "Sí: Desactivar y eliminar de la base de datos.\n"
-                "No: Solo desactivar (formatear) sin eliminar de la BD.\n"
-                "Cancelar: Abortar operación.",
+                "¿Desea eliminar la puerta de la base de datos además de formatearla?\n"
+                "Sí: Formatear y eliminar de la BD.\n"
+                "No: Solo formatear, conservar en la BD.",
                 parent=top
             )
             
@@ -2670,6 +2766,9 @@ class AdminGUI(tk.Tk):
                                 messagebox.showwarning("Lector Desactivado", "El lector ha sido formateado exitosamente, pero no se detectó su dirección MAC en los logs para eliminarlo automáticamente de la base de datos.", parent=top)
                                 top.destroy()
                             top.after(500, on_success_no_mac2)
+                    else:
+                        top.after(0, lambda: lbl_status.config(text=f"Error (Código {e.code})", fg="#9C0303"))
+                        messagebox.showerror("Error", "Ocurrió un problema de conexión al formatear la puerta.\nVerifica que esté bien conectada.", parent=top)
                 except Exception as e:
                     sys.stdout = old_stdout
                     sys.stderr = old_stderr

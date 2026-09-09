@@ -110,13 +110,59 @@ bool rc522_anticoll(uint8_t *uid) {
     for (int j = 0; j < 5; j++)
         uid[j] = rc522_read(0x09);
 
+    if (uid[4] != (uid[0] ^ uid[1] ^ uid[2] ^ uid[3])) {
+        return false;
+    }
+
     return true;
+}
+
+void rc522_calculate_crc(uint8_t *data, int length, uint8_t *out_data) {
+    rc522_write(0x01, 0x00);
+    rc522_write(0x04, 0x7F);
+    rc522_set_bitmask(0x0A, 0x80);
+    for (int i = 0; i < length; i++) rc522_write(0x09, data[i]);
+    rc522_write(0x01, 0x03);
+    int i = 2000;
+    while (i-- && !(rc522_read(0x04) & 0x20));
+    out_data[0] = rc522_read(0x22);
+    out_data[1] = rc522_read(0x21);
+}
+
+void rc522_halt() {
+    uint8_t buff[4];
+    buff[0] = 0x50;
+    buff[1] = 0x00;
+    rc522_calculate_crc(buff, 2, &buff[2]);
+    rc522_write(0x01, 0x00);
+    rc522_write(0x04, 0x7F);
+    rc522_set_bitmask(0x0A, 0x80);
+    for (int i = 0; i < 4; i++) rc522_write(0x09, buff[i]);
+    rc522_write(0x01, 0x0C);
+    rc522_set_bitmask(0x0D, 0x80);
+    int i = 2000;
+    while (i-- && !(rc522_read(0x04) & 0x30));
+    rc522_clear_bitmask(0x0D, 0x80);
+}
+
+void rc522_stop_crypto1() {
+    rc522_clear_bitmask(0x08, 0x08);
 }
 
 void rfid_task(void *arg) {
     uint8_t uid[5];
     while (1) {
-        if (rc522_request() && rc522_anticoll(uid)) {
+        if (!rc522_request()) {
+            vTaskDelay(pdMS_TO_TICKS(50));
+            continue;
+        }
+
+        if (!rc522_anticoll(uid)) {
+            vTaskDelay(pdMS_TO_TICKS(50));
+            continue;
+        }
+
+        {
             char uid_str[11] = "";
             for (int i = 0; i < 4; i++) {
                 sprintf(uid_str + i * 2, "%02X", uid[i]);
@@ -125,9 +171,11 @@ void rfid_task(void *arg) {
             printf("{\"uid\":\"%s\"}\n", uid_str);
             fflush(stdout); // Asegura envío inmediato
             
+            rc522_halt();
+            rc522_stop_crypto1();
+
             vTaskDelay(pdMS_TO_TICKS(1500)); // Espera para evitar lecturas duplicadas
         }
-        vTaskDelay(pdMS_TO_TICKS(100));
     }
 }
 

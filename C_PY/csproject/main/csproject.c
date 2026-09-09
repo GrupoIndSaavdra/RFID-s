@@ -173,8 +173,48 @@ bool rc522_anticoll(uint8_t *uid) {
     for (int j = 0; j < 5; j++)
         uid[j] = rc522_read(0x09);
 
+    // Verificación de BCC (Block Check Character) para asegurar que la lectura fue correcta
+    if (uid[4] != (uid[0] ^ uid[1] ^ uid[2] ^ uid[3])) {
+        return false; // Lectura corrupta
+    }
+
     return true;
 }
+
+/* Función para detener la comunicación con la tarjeta (HaltA) */
+void rc522_calculate_crc(uint8_t *data, int length, uint8_t *out_data) {
+    rc522_write(0x01, 0x00);
+    rc522_write(0x04, 0x7F);
+    rc522_set_bitmask(0x0A, 0x80);
+    for (int i = 0; i < length; i++) rc522_write(0x09, data[i]);
+    rc522_write(0x01, 0x03);
+    int i = 2000;
+    while (i-- && !(rc522_read(0x04) & 0x20));
+    out_data[0] = rc522_read(0x22);
+    out_data[1] = rc522_read(0x21);
+}
+
+void rc522_halt() {
+    uint8_t buff[4];
+    buff[0] = 0x50; // Comando PICC_HALTA
+    buff[1] = 0x00;
+    rc522_calculate_crc(buff, 2, &buff[2]);
+    rc522_write(0x01, 0x00);
+    rc522_write(0x04, 0x7F);
+    rc522_set_bitmask(0x0A, 0x80);
+    for (int i = 0; i < 4; i++) rc522_write(0x09, buff[i]);
+    rc522_write(0x01, 0x0C);
+    rc522_set_bitmask(0x0D, 0x80);
+    int i = 2000;
+    while (i-- && !(rc522_read(0x04) & 0x30));
+    rc522_clear_bitmask(0x0D, 0x80);
+}
+
+/* Función para detener la encriptación (PCD_StopCrypto1) */
+void rc522_stop_crypto1() {
+    rc522_clear_bitmask(0x08, 0x08); // Limpiar MFCrypto1On en Status2Reg
+}
+
 bool tarjeta_existe(uint8_t *uid)
 {
     for (int i = 0; i < total_tarjetas; i++) /*Recorrer la lista de tarjetas*/
@@ -434,7 +474,7 @@ void enqueue_offline_log(const char *uid_str, time_t ts)
 bool send_log_wifi(const char *uid_str, time_t ts)
 {
     char url[250];
-    snprintf(url, sizeof(url), "http://192.168.137.1/log.php?uid=%s&mac=%s&ts=%ld", uid_str, mac_address_str, (long)ts);
+    snprintf(url, sizeof(url), "http://192.168.0.10/log.php?uid=%s&mac=%s&ts=%ld", uid_str, mac_address_str, (long)ts);
     esp_http_client_config_t config = {
         .url = url,
         .timeout_ms = 2000,
@@ -486,7 +526,19 @@ void rfid_task(void *arg)
     uint8_t uid[5];
     while (1)
     {
-        if (rc522_request() && rc522_anticoll(uid)) /*Si se detecta una tarjeta*/
+        // Revisa si hay tarjeta nueva presente (equivalente a rfid.PICC_IsNewCardPresent())
+        if (!rc522_request()) {
+            vTaskDelay(pdMS_TO_TICKS(50));
+            continue;
+        }
+
+        // Intenta leer el serial de la tarjeta (equivalente a rfid.PICC_ReadCardSerial())
+        if (!rc522_anticoll(uid)) {
+            vTaskDelay(pdMS_TO_TICKS(50));
+            continue;
+        }
+
+        /* Si se detecta una tarjeta y se lee correctamente */
         {
             char uid_str[11] = ""; /*Array para almacenar el UID en formato hexadecimal*/
             for (int i = 0; i < 4; i++)
@@ -518,8 +570,14 @@ void rfid_task(void *arg)
                 vTaskDelay(pdMS_TO_TICKS(1000)); 
                 gpio_set_level(PIN_LED_ROJO, 0);
             }
+
+            /* Detener la comunicación y la encriptación para evitar lecturas múltiples seguidas (PICC_HaltA y PCD_StopCrypto1) */
+            rc522_halt();
+            rc522_stop_crypto1();
+            
+            /* Esperar un poco antes de permitir iterar de nuevo (evita spam si la tarjeta se deja apoyada) */
+            vTaskDelay(pdMS_TO_TICKS(1000)); 
         }
-        vTaskDelay(pdMS_TO_TICKS(200)); /*Pequeña espera para reducir carga de la CPU*/
     }
 }
 
@@ -528,7 +586,7 @@ void http_sync_task(void *arg)
 {
     while (1) {
         char url[200];
-        snprintf(url, sizeof(url), "http://192.168.137.1/api.php?mac=%s", mac_address_str);
+        snprintf(url, sizeof(url), "http://192.168.0.10/api.php?mac=%s", mac_address_str);
         
         esp_http_client_config_t config = {
             .url = url,
@@ -570,7 +628,7 @@ void http_sync_task(void *arg)
                 ESP_LOGE("HTTP", "Error leyendo respuesta del servidor");
             }
         } else {
-            ESP_LOGE("HTTP", "Error conectando al servidor XAMPP (192.168.137.1)");
+            ESP_LOGE("HTTP", "Error conectando al servidor XAMPP (192.168.0.10)");
         }
         esp_http_client_cleanup(client);
         
@@ -596,7 +654,8 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t e
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
         esp_wifi_connect();
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
-        ESP_LOGI("WIFI", "Conexion perdida, reintentando...");
+        wifi_event_sta_disconnected_t* disconnected = (wifi_event_sta_disconnected_t*) event_data;
+        ESP_LOGE("WIFI", "Conexion perdida, reintentando... (Razon: %d)", disconnected->reason);
         esp_wifi_connect();
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
@@ -611,6 +670,20 @@ void wifi_init_sta(void) {
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     
     esp_netif_t *sta_netif = esp_netif_create_default_wifi_sta();
+
+    // ---------------------------------------------------------
+    // OPCIONAL: Configurar IP Estática si el módem Steren no da IP
+    // Descomenta las siguientes líneas si sigue fallando:
+    /*
+    esp_netif_dhcpc_stop(sta_netif);
+    esp_netif_ip_info_t ip_info;
+    // Ya ajusté las IPs para que coincidan con tu módem Steren:
+    IP4_ADDR(&ip_info.ip, 192, 168, 0, 200);      // IP fija del ESP32
+    IP4_ADDR(&ip_info.gw, 192, 168, 0, 1);        // IP del módem Steren
+    IP4_ADDR(&ip_info.netmask, 255, 255, 255, 0); // Máscara de subred
+    esp_netif_set_ip_info(sta_netif, &ip_info);
+    */
+    // ---------------------------------------------------------
 
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
@@ -630,15 +703,26 @@ void wifi_init_sta(void) {
         .sta = {
             .ssid = WIFI_SSID,
             .password = WIFI_PASS,
-            .threshold.authmode = WIFI_AUTH_WPA2_PSK,
+            // Forzar escaneo profundo de canales (a veces el Fast Scan se salta el módem)
+            .scan_method = WIFI_ALL_CHANNEL_SCAN,
+            // Bajamos el nivel de seguridad mínimo a WPA_WPA2 en lugar de solo WPA2_PSK estricto
+            // Muchos módems Steren fallan si se exige WPA2 estricto.
+            .threshold.authmode = WIFI_AUTH_WPA_WPA2_PSK,
+            .pmf_cfg = {
+                .capable = true,
+                .required = false
+            },
         },
     };
     
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
+    // Limpiamos configuración vieja en la flash (NVS) antes de configurar la nueva
+    esp_wifi_disconnect(); 
+    
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
     ESP_ERROR_CHECK(esp_wifi_start());
     
-    // Desactivar ahorro de energia para evitar perdida de paquetes/ping
+    // Desactivar ahorro de energia para evitar perdida de paquetes/ping (Ya lo tenías, ¡excelente!)
     ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
     
     ESP_LOGI("WIFI", "wifi_init_sta completado. Conectando a %s", WIFI_SSID);

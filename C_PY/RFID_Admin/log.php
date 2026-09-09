@@ -54,7 +54,13 @@ if ($uid !== '' && $mac !== '') {
     $ts = isset($_GET['ts']) ? $_GET['ts'] : '';
     
     if (is_numeric($ts) && $ts > 1000000000) {
-        $timestamp_val = "FROM_UNIXTIME(" . intval($ts) . ")";
+        // Verificar que el timestamp no provenga de un glitch en el RTC (ej. año 2035/2036)
+        // Si el timestamp está más de 1 hora en el futuro, usar la hora actual del servidor.
+        if (intval($ts) > time() + 3600) {
+            $timestamp_val = "NOW()";
+        } else {
+            $timestamp_val = "FROM_UNIXTIME(" . intval($ts) . ")";
+        }
     } else {
         $timestamp_val = "NOW()";
     }
