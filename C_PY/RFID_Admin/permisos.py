@@ -13,7 +13,7 @@ def limpiar_permisos(uid: str):
         cur = conn.cursor()
         for tabla in AREAS_TABLAS.values():
             try:
-                cur.execute(f"DELETE FROM {tabla} WHERE uid=%s", (uid,))
+                cur.execute(f"UPDATE {tabla} SET activa=0 WHERE uid=%s", (uid,))
             except Exception as e:
                 # Si una tabla no existe, la ignoramos y continuamos
                 pass

@@ -269,7 +269,8 @@ class AdminGUI(tk.Tk):
             "usuarios_btn": os.path.join(base_dir, "Imagenes", "Usuarios.png"),
             "visor_btn": os.path.join(base_dir, "Imagenes", "Visor 1.png"),
             "puertas_btn": os.path.join(base_dir, "Imagenes", "Puertas.png"),
-            "descarga": os.path.join(base_dir, "Imagenes", "Descarga.png")
+            "descarga": os.path.join(base_dir, "Imagenes", "Descarga.png"),
+            "grupo": os.path.join(base_dir, "Imagenes", "grupo.png")
         }
         self.iconos = {}
         
@@ -606,6 +607,10 @@ class AdminGUI(tk.Tk):
         self.btn_main_visor = ttk.Button(self.frame_sidebar, text="  Visor", image=self.cargar_icono("visor_btn", 16), compound=tk.LEFT, style="Menu.TButton", command=self.toggle_submenu_visor, takefocus=False)
         self.btn_main_visor.pack(fill=tk.X, pady=2)
         
+        # Botón Historial (Permisos en Áreas)
+        btn_historial = ttk.Button(self.frame_sidebar, text="  Historial Usuarios", image=self.cargar_icono("grupo", 16), compound=tk.LEFT, style="Menu.TButton", command=self.mostrar_vista_historial_usuarios, takefocus=False)
+        btn_historial.pack(fill=tk.X, pady=2)
+
         self.frame_sub_visor = tk.Frame(self.frame_sidebar, bg="#1E1F22", height=0)
         self.frame_sub_visor.pack_propagate(False)
         
@@ -1921,6 +1926,85 @@ class AdminGUI(tk.Tk):
     def sincronizar_esp32_inmediato(self):
         pass
 
+
+    def mostrar_vista_historial_usuarios(self):
+        self.vista_actual = "historial"
+        for widget in self.frame_main.winfo_children():
+            if widget not in (self.frame_top, self.frame_top_sep):
+                widget.destroy()
+
+        self.lbl_titulo.config(text="HISTORIAL DE PERMISOS POR ÁREA")
+
+        frame_filtro = tk.Frame(self.frame_main, bg="#FFFFFF")
+        frame_filtro.pack(fill=tk.X, padx=25, pady=(25, 0))
+        
+        tk.Label(frame_filtro, text="Seleccione Área:", font=("Segoe UI", 10, "bold"), bg="#FFFFFF").pack(side=tk.LEFT, padx=(10, 5))
+        
+        from config import AREAS
+        opciones_area = sorted(AREAS.values())
+        
+        self.area_filtro_hist = tk.StringVar()
+        if opciones_area: self.area_filtro_hist.set(opciones_area[0])
+        
+        cb_area = ttk.Combobox(frame_filtro, textvariable=self.area_filtro_hist, values=opciones_area, state="readonly", font=("Segoe UI", 10), width=30)
+        cb_area.pack(side=tk.LEFT, padx=5, pady=10)
+        
+        card_logs = tk.Frame(self.frame_main, bg="#FFFFFF", bd=0, highlightbackground="#E0E0E0", highlightthickness=1)
+        card_logs.pack(fill=tk.BOTH, expand=True, padx=25, pady=(20, 25))
+        
+        col_logs = ("uid", "nombre", "estado")
+        self.tree_hist = ttk.Treeview(card_logs, columns=col_logs, show="headings", selectmode="none")
+        self.tree_hist.heading("uid", text="UID Tarjeta")
+        self.tree_hist.heading("nombre", text="Nombre del Empleado")
+        self.tree_hist.heading("estado", text="Estado en Área")
+        
+        self.tree_hist.column("uid", width=150, anchor=tk.CENTER)
+        self.tree_hist.column("nombre", width=400, anchor=tk.W)
+        self.tree_hist.column("estado", width=150, anchor=tk.CENTER)
+        
+        self.tree_hist.tag_configure("Activo", foreground="#0A8504")
+        self.tree_hist.tag_configure("Inactivo", foreground="#9C0303")
+        
+        scroll_l = ttk.Scrollbar(card_logs, orient=tk.VERTICAL, command=self.tree_hist.yview)
+        self.tree_hist.configure(yscrollcommand=scroll_l.set)
+        self.tree_hist.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(15, 0), pady=(0, 15))
+        scroll_l.pack(side=tk.RIGHT, fill=tk.Y, padx=(0, 15), pady=(0, 15))
+
+        def on_area_change(*args):
+            for item in self.tree_hist.get_children(): self.tree_hist.delete(item)
+            area_name = self.area_filtro_hist.get()
+            from config import AREAS, AREAS_TABLAS
+            from database import conectar_db
+            
+            area_id = None
+            for k, v in AREAS.items():
+                if v == area_name:
+                    area_id = k
+                    break
+                    
+            if not area_id: return
+            tabla = AREAS_TABLAS.get(area_id)
+            if not tabla: return
+            
+            conn = conectar_db()
+            if not conn: return
+            try:
+                cur = conn.cursor()
+                cur.execute(f"SELECT uid, nombre, activa FROM {tabla} ORDER BY activa DESC, nombre ASC")
+                registros = cur.fetchall()
+                
+                for r in registros:
+                    uid, nombre, activa = r
+                    estado = "Activo (Con Acceso)" if activa else "Desactivado (Sin Acceso)"
+                    tag = "Activo" if activa else "Inactivo"
+                    self.tree_hist.insert("", tk.END, values=(uid, nombre, estado), tags=(tag,))
+            except Exception as e:
+                print(f"Error cargando historial de area: {e}")
+            finally:
+                conn.close()
+                
+        cb_area.bind("<<ComboboxSelected>>", on_area_change)
+        on_area_change()
 
     def mostrar_vista_visor(self, area_filtrar="General"):
         self.vista_actual = "visor"
