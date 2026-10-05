@@ -270,7 +270,9 @@ class AdminGUI(tk.Tk):
             "visor_btn": os.path.join(base_dir, "Imagenes", "Visor 1.png"),
             "puertas_btn": os.path.join(base_dir, "Imagenes", "Puertas.png"),
             "descarga": os.path.join(base_dir, "Imagenes", "Descarga.png"),
-            "grupo": os.path.join(base_dir, "Imagenes", "grupo.png")
+            "grupo": os.path.join(base_dir, "Imagenes", "grupo.png"),
+            "usuario_activo2": os.path.join(base_dir, "Imagenes", "Usuario activo (2).png"),
+            "usuario_inactivo": os.path.join(base_dir, "Imagenes", "Usuario Inactivo.png")
         }
         self.iconos = {}
         
@@ -1953,7 +1955,9 @@ class AdminGUI(tk.Tk):
         card_logs.pack(fill=tk.BOTH, expand=True, padx=25, pady=(20, 25))
         
         col_logs = ("uid", "nombre", "estado")
-        self.tree_hist = ttk.Treeview(card_logs, columns=col_logs, show="headings", selectmode="none")
+        self.tree_hist = ttk.Treeview(card_logs, columns=col_logs, show="tree headings", selectmode="none")
+        self.tree_hist.heading("#0", text="")
+        self.tree_hist.column("#0", width=50, stretch=False, anchor=tk.CENTER)
         self.tree_hist.heading("uid", text="UID Tarjeta")
         self.tree_hist.heading("nombre", text="Nombre del Empleado")
         self.tree_hist.heading("estado", text="Estado en Área")
@@ -1997,7 +2001,8 @@ class AdminGUI(tk.Tk):
                     uid, nombre, activa = r
                     estado = "Activo (Con Acceso)" if activa else "Desactivado (Sin Acceso)"
                     tag = "Activo" if activa else "Inactivo"
-                    self.tree_hist.insert("", tk.END, values=(uid, nombre, estado), tags=(tag,))
+                    icono = self.cargar_icono("usuario_activo2", 24) if activa else self.cargar_icono("usuario_inactivo", 24)
+                    self.tree_hist.insert("", tk.END, text="", image=icono, values=(uid, nombre, estado), tags=(tag,))
             except Exception as e:
                 print(f"Error cargando historial de area: {e}")
             finally:
