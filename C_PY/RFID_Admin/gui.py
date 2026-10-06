@@ -1,3 +1,4 @@
+from logger import log_error
 # gui.py
 # Módulo de Interfaz Gráfica (Tkinter) para Administración
 
@@ -293,7 +294,7 @@ class AdminGUI(tk.Tk):
                 else:
                     self.iconos[key] = ""
             except Exception as e:
-                print(f"Error cargando {name}: {e}")
+                log_error(f"Error cargando {name}: {e}")
                 self.iconos[key] = ""
         return self.iconos[key]
 
@@ -502,7 +503,7 @@ class AdminGUI(tk.Tk):
                 else:
                     self.iconos[name] = ""
             except Exception as e:
-                print(f"Error cargando {name}: {e}")
+                log_error(f"Error cargando {name}: {e}")
                 self.iconos[name] = ""
         return self.iconos[name]
 
@@ -520,7 +521,7 @@ class AdminGUI(tk.Tk):
                 else:
                     self.iconos[key] = ""
             except Exception as e:
-                print(f"Error cargando logo {name}: {e}")
+                log_error(f"Error cargando logo {name}: {e}")
                 self.iconos[key] = ""
         return self.iconos[key]
 
@@ -652,7 +653,7 @@ class AdminGUI(tk.Tk):
                 lista_puertas = doors.listar_puertas()
                 self.after(0, lambda: self._apply_puertas_ui(lista_puertas))
             except Exception as e:
-                print(f"Error bg portas: {e}")
+                log_error(f"Error bg portas: {e}")
 
         threading.Thread(target=fetch_task, daemon=True).start()
 
@@ -759,7 +760,7 @@ class AdminGUI(tk.Tk):
                 del self.widgets_puertas[m]
                 
         except Exception as e:
-            print(f"Error en render_lista_puertas_sidebar: {e}")
+            log_error(f"Error en render_lista_puertas_sidebar: {e}")
 
     def loop_actualizar_puertas(self):
         if getattr(self, 'running', False):
@@ -886,7 +887,7 @@ class AdminGUI(tk.Tk):
                 nombres_areas = permissions.areas_a_nombres(areas)
                 self.tree_usuarios_tablero.insert("", tk.END, values=(uid, nombre, rol, nombres_areas))
         except Exception as e:
-            print(f"Error cargando usuarios en tablero: {e}")
+            log_error(f"Error cargando usuarios en tablero: {e}")
         finally:
             conn.close()
 
@@ -932,7 +933,7 @@ class AdminGUI(tk.Tk):
                 
                 self.after(0, lambda: self.render_logs_tablero(nuevos_logs))
             except Exception as e:
-                print(f"Error actualizando logs: {e}")
+                log_error(f"Error actualizando logs: {e}")
                 self.after(2000, self.actualizar_logs_tablero)
             finally:
                 conn.close()
@@ -1189,6 +1190,10 @@ class AdminGUI(tk.Tk):
         self.vista_actual = "usuarios"
         self.lbl_titulo.config(text="USUARIOS")
         
+        # Pagination state
+        if not hasattr(self, 'page_usuarios'): self.page_usuarios = 0
+        self.limit_usuarios = 50
+
         # Barra de búsqueda y filtrado
         frame_busqueda = tk.Frame(self.frame_main, bg="#FFFFFF")
         frame_busqueda.pack(fill=tk.X, pady=10, padx=20)
@@ -1208,6 +1213,18 @@ class AdminGUI(tk.Tk):
         
         btn_filtro = tk.Button(frame_busqueda, text="Todas ▼", bg="#033966", fg="#FFFFFF", font=("Poppins", 10, "bold"), bd=0, activebackground="#0A8504", activeforeground="#FFFFFF")
         btn_filtro.pack(side=tk.LEFT, padx=5, ipady=3, ipadx=10)
+        
+        def ir_anterior():
+            if self.page_usuarios > 0:
+                self.page_usuarios -= 1
+                self.cargar_tabla_usuarios()
+                
+        def ir_siguiente():
+            self.page_usuarios += 1
+            self.cargar_tabla_usuarios()
+            
+        ttk.Button(frame_busqueda, text="Sig >", command=ir_siguiente).pack(side=tk.RIGHT, padx=5)
+        ttk.Button(frame_busqueda, text="< Ant", command=ir_anterior).pack(side=tk.RIGHT, padx=5)
         
         ico_hourglass = self.cargar_icono("hourglass", 24)
         ttk.Button(frame_busqueda, text=" Recargar", image=ico_hourglass, compound=tk.LEFT, command=self.cargar_tabla_usuarios).pack(side=tk.RIGHT, padx=5)
@@ -1372,7 +1389,9 @@ class AdminGUI(tk.Tk):
                     area_id_filtro = str(k)
                     break
         
-        for t in users.listar_usuarios():
+        limit = getattr(self, 'limit_usuarios', None)
+        offset = getattr(self, 'page_usuarios', 0) * (limit if limit else 50)
+        for t in users.listar_usuarios(limit=limit, offset=offset):
             if t[5]: # activa (now t[5] because rol is t[2])
                 uid = t[0]
                 nombre = t[1]
@@ -2004,7 +2023,7 @@ class AdminGUI(tk.Tk):
                     icono = self.cargar_icono("usuario_activo2", 24) if activa else self.cargar_icono("usuario_inactivo", 24)
                     self.tree_hist.insert("", tk.END, text="", image=icono, values=(uid, nombre, estado), tags=(tag,))
             except Exception as e:
-                print(f"Error cargando historial de area: {e}")
+                log_error(f"Error cargando historial de area: {e}")
             finally:
                 conn.close()
                 
@@ -2162,7 +2181,7 @@ class AdminGUI(tk.Tk):
         if getattr(self, 'vista_actual', None) != "visor": return
 
         def fetch_task():
-            import database, usuarios, permisos
+            import database, users, permissions
             from config import AREAS
             conn = database.conectar_db()
             if not conn:
@@ -2250,7 +2269,7 @@ class AdminGUI(tk.Tk):
 
                 self.after(0, lambda: self.render_logs_visor(nuevos_render))
             except Exception as e:
-                print(f"Error actualizando visor: {e}")
+                log_error(f"Error actualizando visor: {e}")
                 self.after(2000, self.actualizar_logs_visor)
             finally:
                 conn.close()
@@ -2671,7 +2690,7 @@ class AdminGUI(tk.Tk):
                             messagebox.showerror("Error", f"El área seleccionada ya tiene una puerta asignada como '{tipo}'.\n\nPor favor, selecciona otro tipo de puerta (p. ej. si ya hay Entrada, elige Salida).", parent=dlg)
                             return
                     except Exception as e:
-                        print(f"Error validando tipo de puerta: {e}")
+                        log_error(f"Error validando tipo de puerta: {e}")
                     finally:
                         conn.close()
             

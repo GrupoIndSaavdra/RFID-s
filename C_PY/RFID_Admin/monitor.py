@@ -1,3 +1,4 @@
+from logger import log_error
 import serial, serial.tools.list_ports, time
 
 def main():
@@ -14,7 +15,7 @@ def main():
                 try: print(l) if (l := ser.readline().decode('utf-8', errors='replace').strip()) else None
                 except Exception as e: print(f"[Error leyendo datos: {e}]")
             else: time.sleep(0.01)
-    except serial.SerialException as e: print(f"Error al abrir el puerto: {e}\nAsegúrate de que la interfaz gráfica no lo esté usando.")
+    except serial.SerialException as e: log_error(f"Error al abrir el puerto: {e}\nAsegúrate de que la interfaz gráfica no lo esté usando.")
     except KeyboardInterrupt: print("\nSaliendo del monitor serial...")
     finally:
         if 'ser' in locals() and ser.is_open: ser.close()

@@ -1,3 +1,4 @@
+from logger import log_error
 import os
 import matplotlib; matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -31,4 +32,4 @@ def generar_reporte_pdf(ruta, area, logs, perm, den) -> bool:
         doc.build(elems)
         if os.path.exists(tmp): os.remove(tmp)
         return True
-    except Exception as e: print(f"Error generando PDF: {e}"); return False
+    except Exception as e: log_error(f"Error generando PDF: {e}"); return False

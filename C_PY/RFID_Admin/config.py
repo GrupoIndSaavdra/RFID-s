@@ -2,38 +2,32 @@
 import os, sys
 
 app_path = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.path.dirname(os.path.abspath(__file__))
-config_file = os.path.join(app_path, "port_settings.txt")
+import serial.tools.list_ports
 
-if not os.path.exists(config_file):
-    with open(config_file, "w", encoding="utf-8") as f: f.write("COM4")
-    PUERTO = "COM4"
-else:
-    with open(config_file, "r", encoding="utf-8") as f: PUERTO = f.read().strip() or "COM4"
+def get_rfid_port():
+    ports = list(serial.tools.list_ports.comports())
+    for p in ports:
+        if "USB" in p.description or "CH340" in p.description or "Arduino" in p.description or "Serial" in p.description:
+            return p.device
+    return ports[0].device if ports else "COM4"
 
-BAUDRATE, DB_CONFIG = 115200, {"host": "localhost", "user": "root", "password": "", "database": "rfid_db"}
+PUERTO = get_rfid_port()
 
-AREAS = {
-    "1": "Baños",
-    "3": "Calidad",
-    "4": "Almacén",
-    "5": "RH",
-    "6": "Mantenimiento",
-    "7": "Comedor",
-    "8": "Gerencia",
-    "9": "Producción",
-    "10": "Sala de Juntas",
-    "11": "Programacion-Software"
-}
+BAUDRATE = 115200
 
-AREAS_TABLAS = {
-    "1": "banos",
-    "3": "calidad",
-    "4": "almacen",
-    "5": "rh",
-    "6": "mantenimiento",
-    "7": "comedor",
-    "8": "oficina_de_gerencia",
-    "9": "oficina_de_produccion",
-    "10": "sala_de_juntas",
-    "11": "programacion_software"
-}
+env_path = os.path.join(app_path, ".env")
+env_vars = {}
+if not os.path.exists(env_path):
+    with open(env_path, "w", encoding="utf-8") as f: f.write("DB_HOST=localhost\nDB_USER=root\nDB_PASS=\nDB_NAME=rfid_db\n")
+try:
+    with open(env_path, "r", encoding="utf-8") as f:
+        for l in f:
+            if l.strip() and not l.startswith("#") and "=" in l:
+                k, v = l.strip().split("=", 1)
+                env_vars[k.strip()] = v.strip()
+except: pass
+
+DB_CONFIG = {"host": env_vars.get("DB_HOST", "localhost"), "user": env_vars.get("DB_USER", "root"), "password": env_vars.get("DB_PASS", ""), "database": env_vars.get("DB_NAME", "rfid_db")}
+
+AREAS = {}
+AREAS_TABLAS = {}
