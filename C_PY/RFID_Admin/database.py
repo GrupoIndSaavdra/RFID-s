@@ -1,51 +1,37 @@
 # database.py
-# Módulo de conexión a la base de datos
-
-import mysql.connector
-from mysql.connector import Error
+import mysql.connector, hashlib
+from mysql.connector import pooling
 from config import DB_CONFIG
-import hashlib
+
+try:
+    db_pool = mysql.connector.pooling.MySQLConnectionPool(pool_name="rfid_pool", pool_size=5, pool_reset_session=True, **DB_CONFIG)
+except Exception as e:
+    print(f"Error creando el pool de conexiones: {e}"); db_pool = None
 
 def conectar_db():
-    """Establece la conexión con la base de datos MySQL usando los datos de config.py"""
-    try:
-        return mysql.connector.connect(**DB_CONFIG)
-    except Error as e:
-        print(f"Error al conectar con la base de datos: {e}")
-        return None
+    if not db_pool: return None
+    try: return db_pool.get_connection()
+    except Exception as e: print(f"Error obteniendo conexión del pool: {e}"); return None
 
 def inicializar_db():
-    """Crea la tabla de admin_users si no existe y un usuario por defecto."""
-    conn = conectar_db()
-    if not conn: return
+    if not (conn := conectar_db()): return
     try:
         cur = conn.cursor()
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS admin_users (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                username VARCHAR(50) UNIQUE NOT NULL,
-                password_hash VARCHAR(64) NOT NULL,
-                rol VARCHAR(20) NOT NULL
-            )
-        """)
+        cur.execute("CREATE TABLE IF NOT EXISTS admin_users (id INT AUTO_INCREMENT PRIMARY KEY, username VARCHAR(50) UNIQUE NOT NULL, password_hash VARCHAR(64) NOT NULL, rol VARCHAR(20) NOT NULL)")
         conn.commit()
-
-        # Verificar si hay usuarios, si no, crear el usuario por defecto
+        
         cur.execute("SELECT COUNT(*) FROM admin_users")
-        count = cur.fetchone()[0]
-        if count == 0:
-            # Crear usuario administrador por defecto (admin/admin con rol ingeniero)
-            # y un usuario de RH (rh/rh con rol operador)
-            default_pass_hash = hashlib.sha256("admin".encode()).hexdigest()
-            rh_pass_hash = hashlib.sha256("rh".encode()).hexdigest()
-            
-            cur.execute("""
-                INSERT INTO admin_users (username, password_hash, rol)
-                VALUES (%s, %s, %s), (%s, %s, %s)
-            """, ("admin", default_pass_hash, "ingeniero", "rh", rh_pass_hash, "operador"))
+        if cur.fetchone()[0] == 0:
+            p_a, p_r = hashlib.sha256(b"admin").hexdigest(), hashlib.sha256(b"rh").hexdigest()
+            cur.execute("INSERT INTO admin_users (username, password_hash, rol) VALUES (%s, %s, %s), (%s, %s, %s)", ("admin", p_a, "ingeniero", "rh", p_r, "operador"))
             conn.commit()
-            print("Se crearon los usuarios administradores por defecto (admin y rh).")
-    except Error as e:
-        print(f"Error al inicializar la base de datos: {e}")
-    finally:
-        conn.close()
+            
+        try:
+            cur.execute("ALTER TABLE tarjetas ADD INDEX idx_activa (activa)")
+            cur.execute("ALTER TABLE tarjetas ADD INDEX idx_rol (rol)")
+            cur.execute("ALTER TABLE puertas ADD INDEX idx_area_id (area_id)")
+            conn.commit()
+        except: pass # Índices ya existen o tablas no creadas aún
+            
+    except Exception as e: print(f"Error al inicializar la base de datos: {e}")
+    finally: conn.close()

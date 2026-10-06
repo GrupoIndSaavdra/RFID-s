@@ -1,37 +1,17 @@
 # config.py
-# Variables globales y configuraciones
+import os, sys
 
-import os
-import sys
-
-if getattr(sys, 'frozen', False):
-    app_path = os.path.dirname(sys.executable)
-else:
-    app_path = os.path.dirname(os.path.abspath(__file__))
-
+app_path = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.path.dirname(os.path.abspath(__file__))
 config_file = os.path.join(app_path, "port_settings.txt")
 
 if not os.path.exists(config_file):
-    with open(config_file, "w", encoding="utf-8") as f:
-        f.write("COM4")
+    with open(config_file, "w", encoding="utf-8") as f: f.write("COM4")
     PUERTO = "COM4"
 else:
-    with open(config_file, "r", encoding="utf-8") as f:
-        PUERTO = f.read().strip()
-        if not PUERTO:
-            PUERTO = "COM4"
+    with open(config_file, "r", encoding="utf-8") as f: PUERTO = f.read().strip() or "COM4"
 
-BAUDRATE = 115200
+BAUDRATE, DB_CONFIG = 115200, {"host": "localhost", "user": "root", "password": "", "database": "rfid_db"}
 
-# ── Configuracion MySQL (XAMPP) ──────────────────────────────
-DB_CONFIG = {
-    "host":     "localhost",
-    "user":     "root",
-    "password": "",
-    "database": "rfid_db"
-}
-
-# ── Areas disponibles ────────────────────────────────────────
 AREAS = {
     "1": "Baños",
     "3": "Calidad",
@@ -45,11 +25,6 @@ AREAS = {
     "11": "Programacion-Software"
 }
 
-
-
-
-
-# ── Tablas correspondientes a las áreas ──────────────────────
 AREAS_TABLAS = {
     "1": "banos",
     "3": "calidad",
@@ -62,7 +37,3 @@ AREAS_TABLAS = {
     "10": "sala_de_juntas",
     "11": "programacion_software"
 }
-
-
-
-
