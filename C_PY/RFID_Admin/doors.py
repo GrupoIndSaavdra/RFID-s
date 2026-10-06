@@ -1,4 +1,4 @@
-# puertas.py
+# doors.py
 # Módulo para el manejo del CRUD de la tabla 'puertas' (ESP32 Wi-Fi)
 
 from database import conectar_db

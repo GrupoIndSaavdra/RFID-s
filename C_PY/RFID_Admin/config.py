@@ -9,7 +9,7 @@ if getattr(sys, 'frozen', False):
 else:
     app_path = os.path.dirname(os.path.abspath(__file__))
 
-config_file = os.path.join(app_path, "ajustes_puerto.txt")
+config_file = os.path.join(app_path, "port_settings.txt")
 
 if not os.path.exists(config_file):
     with open(config_file, "w", encoding="utf-8") as f:

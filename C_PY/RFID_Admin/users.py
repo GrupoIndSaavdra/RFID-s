@@ -1,11 +1,11 @@
-# usuarios.py
+# users.py
 # Módulo para el manejo del CRUD de la tabla maestra 'tarjetas'
 
 from database import conectar_db
-import permisos
+import permissions
 
 def registrar_usuario(uid: str, nombre: str, rol: str, areas_raw: str) -> bool:
-    """Da de alta un usuario en el directorio y actualiza sus permisos."""
+    """Da de alta un usuario en el directorio y actualiza sus permissions."""
     conn = conectar_db()
     if not conn: return False
     
@@ -22,8 +22,8 @@ def registrar_usuario(uid: str, nombre: str, rol: str, areas_raw: str) -> bool:
         conn.commit()
         
         # 2. Re-asignar los permisos
-        permisos.limpiar_permisos(uid)
-        permisos.asignar_permisos(uid, nombre, areas_raw)
+        permissions.limpiar_permisos(uid)
+        permissions.asignar_permisos(uid, nombre, areas_raw)
         
         return True
     except Exception as e:
@@ -96,7 +96,7 @@ def eliminar_usuario(uid: str) -> bool:
         conn.commit()
         
         # 2. Retirar permisos en las demás tablas
-        permisos.limpiar_permisos(uid)
+        permissions.limpiar_permisos(uid)
         
         return True
     except Exception as e:
@@ -189,8 +189,8 @@ def asignar_area_masiva(rol: str, area_id: str) -> int:
                 cur.execute("UPDATE tarjetas SET areas=%s WHERE uid=%s", (nuevas_areas, uid))
                 
                 # Actualizar tablas de permisos
-                permisos.limpiar_permisos(uid)
-                permisos.asignar_permisos(uid, nombre, nuevas_areas)
+                permissions.limpiar_permisos(uid)
+                permissions.asignar_permisos(uid, nombre, nuevas_areas)
                 afectados += 1
                 
         conn.commit()

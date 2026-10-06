@@ -1,4 +1,4 @@
-# permisos.py
+# permissions.py
 # Lógica para distribuir permisos a las tablas de áreas
 
 from database import conectar_db

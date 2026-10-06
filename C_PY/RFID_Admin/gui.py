@@ -194,9 +194,9 @@ class CustomModal(tk.Toplevel):
 
 # Importar configuraciones y lógica de negocio
 from config import PUERTO, BAUDRATE, AREAS
-import usuarios
-import permisos
-import puertas
+import users
+import permissions
+import doors
 
 class AdminGUI(tk.Tk):
     def __init__(self):
@@ -256,11 +256,11 @@ class AdminGUI(tk.Tk):
             "accept": os.path.join(base_dir, "Imagenes", "Agregar.png"),
             "alarm": os.path.join(base_dir, "Imagenes", "DELET.png"),
             "hourglass": os.path.join(base_dir, "Imagenes", "Recarga de tablas.png"),
-            "save": os.path.join(base_dir, "Imagenes", "Guardar información de tarjetas-puertas.png"),
+            "save": os.path.join(base_dir, "Imagenes", "Guardar información de tarjetas-doors.png"),
             "write": os.path.join(base_dir, "Imagenes", "editar-informacion.png"),
             "menu": os.path.join(base_dir, "Imagenes", "Menú.png"),
             "fondo_inicio": os.path.join(base_dir, "Imagenes", "Fondo de inicio.jpg"),
-            "fondo_usuarios": os.path.join(base_dir, "Imagenes", "Fondo de usuarios.png"),
+            "fondo_usuarios": os.path.join(base_dir, "Imagenes", "Fondo de users.png"),
             "logo": os.path.join(base_dir, "Imagenes", "Logo.png"),
             "buscar": os.path.join(base_dir, "Imagenes", "Buscar.png"),
             "activar": os.path.join(base_dir, "Imagenes", "Activar 1.png"),
@@ -648,8 +648,8 @@ class AdminGUI(tk.Tk):
         
         def fetch_task():
             try:
-                import puertas
-                lista_puertas = puertas.listar_puertas()
+                import doors
+                lista_puertas = doors.listar_puertas()
                 self.after(0, lambda: self._apply_puertas_ui(lista_puertas))
             except Exception as e:
                 print(f"Error bg portas: {e}")
@@ -882,8 +882,8 @@ class AdminGUI(tk.Tk):
                     areas_list = [a.strip() for a in areas.split(",")]
                     if filtro_id not in areas_list:
                         continue
-                import permisos
-                nombres_areas = permisos.areas_a_nombres(areas)
+                import permissions
+                nombres_areas = permissions.areas_a_nombres(areas)
                 self.tree_usuarios_tablero.insert("", tk.END, values=(uid, nombre, rol, nombres_areas))
         except Exception as e:
             print(f"Error cargando usuarios en tablero: {e}")
@@ -1297,7 +1297,7 @@ class AdminGUI(tk.Tk):
     def mostrar_modal_asignacion_masiva(self):
         if not hasattr(self, 'tree_usuarios'): return
         
-        roles = usuarios.obtener_roles_unicos()
+        roles = users.obtener_roles_unicos()
         if not roles:
             return messagebox.showinfo("Información", "No hay roles registrados en el sistema todavía.")
             
@@ -1330,7 +1330,7 @@ class AdminGUI(tk.Tk):
                     break
             
             if messagebox.askyesno("Confirmar", f"¿Dar acceso al área '{area_sel}' a TODOS los '{rol}'?"):
-                afectados = usuarios.asignar_area_masiva(rol, area_id)
+                afectados = users.asignar_area_masiva(rol, area_id)
                 messagebox.showinfo("Éxito", f"Se actualizó el acceso de {afectados} empleados con el rol '{rol}'.")
                 self.sincronizar_esp32_inmediato()
                 self.cargar_tabla_usuarios()
@@ -1343,7 +1343,7 @@ class AdminGUI(tk.Tk):
         nuevo_rol = sd.askstring("Nuevo Rol", "Escribe el nombre del nuevo rol (ej. Gerente, Limpieza):", parent=self)
         if nuevo_rol and nuevo_rol.strip():
             nombre = nuevo_rol.strip()
-            if usuarios.registrar_rol(nombre):
+            if users.registrar_rol(nombre):
                 messagebox.showinfo("Éxito", f"Rol '{nombre}' registrado correctamente.")
             else:
                 messagebox.showerror("Error", "No se pudo registrar el rol (tal vez ya existe).")
@@ -1372,7 +1372,7 @@ class AdminGUI(tk.Tk):
                     area_id_filtro = str(k)
                     break
         
-        for t in usuarios.listar_usuarios():
+        for t in users.listar_usuarios():
             if t[5]: # activa (now t[5] because rol is t[2])
                 uid = t[0]
                 nombre = t[1]
@@ -1390,7 +1390,7 @@ class AdminGUI(tk.Tk):
                     if area_id_filtro not in lista_areas_ids:
                         continue
                 
-                nombres_areas = permisos.areas_a_nombres(areas_raw)
+                nombres_areas = permissions.areas_a_nombres(areas_raw)
                 
                 fecha_mod = str(t[6])[:16] if len(t) > 6 and t[6] else str(t[4])[:16]
                 
@@ -1441,7 +1441,7 @@ class AdminGUI(tk.Tk):
         if nombre_editar: ent_nombre.insert(0, nombre_editar)
 
         tk.Label(top, text="Puesto / Rol del Empleado:", bg="#FFFFFF", fg="#000000", font=("Poppins", 10)).pack(anchor="w", padx=30, pady=(15,0))
-        roles_comunes = usuarios.obtener_roles_unicos()
+        roles_comunes = users.obtener_roles_unicos()
         if not roles_comunes:
             roles_comunes = ["Empleado"]
         ent_rol = ttk.Combobox(top, values=roles_comunes, font=("Poppins", 12), state="readonly")
@@ -1496,7 +1496,7 @@ class AdminGUI(tk.Tk):
             if not uid or not nombre: return messagebox.showerror("Error", "UID y Nombre son obligatorios.")
             if not areas_str: return messagebox.showerror("Error", "Debes seleccionar al menos un área.")
 
-            if usuarios.registrar_usuario(uid, nombre, rol, areas_str):
+            if users.registrar_usuario(uid, nombre, rol, areas_str):
                 messagebox.showinfo("Éxito", "Usuario guardado correctamente.")
                 self.sincronizar_esp32_inmediato()
                 self.uid_escaneado_reciente = None
@@ -1511,7 +1511,7 @@ class AdminGUI(tk.Tk):
         seleccion = self.tree_usuarios.selection()
         if not seleccion: return messagebox.showwarning("Aviso", "Selecciona un usuario para editar.")
         uid, nombre = self.tree_usuarios.item(seleccion[0], "values")[0:2]
-        row = usuarios.buscar_usuario(uid)
+        row = users.buscar_usuario(uid)
         if row: 
             self.mostrar_vista_formulario_usuario(uid_editar=uid, nombre_editar=nombre, rol_editar=row[2], areas_editar=row[3])
         else:
@@ -1524,7 +1524,7 @@ class AdminGUI(tk.Tk):
         uid, nombre = self.tree_usuarios.item(seleccion[0], "values")[0:2]
         
         if messagebox.askyesno("Confirmar Baja", f"¿Eliminar permanentemente a:\n{nombre} ({uid})?"):
-            if usuarios.eliminar_usuario(uid):
+            if users.eliminar_usuario(uid):
                 messagebox.showinfo("Éxito", "Usuario eliminado.")
                 self.sincronizar_esp32_inmediato()
                 self.cargar_tabla_usuarios()
@@ -1609,7 +1609,7 @@ class AdminGUI(tk.Tk):
     def cargar_tabla_puertas(self):
         if self.vista_actual != "puertas": return
         for item in self.tree_puertas.get_children(): self.tree_puertas.delete(item)
-        for p in puertas.listar_puertas():
+        for p in doors.listar_puertas():
             area_nombre = AREAS.get(p[2], p[2])
             tipo_puerta = p[3] if len(p) > 3 else "Entrada"
             self.tree_puertas.insert("", tk.END, values=(p[0], p[1], area_nombre, tipo_puerta, ""))
@@ -1739,7 +1739,7 @@ class AdminGUI(tk.Tk):
                     area_id = str(k)
                     break
 
-            if puertas.registrar_puerta(mac, nombre, area_id, tipo_sel):
+            if doors.registrar_puerta(mac, nombre, area_id, tipo_sel):
                 messagebox.showinfo("Éxito", "Puerta guardada correctamente.")
                 self.mostrar_vista_puertas()
             else:
@@ -1763,7 +1763,7 @@ class AdminGUI(tk.Tk):
         if not sel: return messagebox.showwarning("Aviso", "Selecciona una puerta para eliminarla.")
         mac, nombre = self.tree_puertas.item(sel[0], "values")[0:2]
         if messagebox.askyesno("Confirmar", f"¿Eliminar la puerta '{nombre}' ({mac})?"):
-            if puertas.eliminar_puerta(mac):
+            if doors.eliminar_puerta(mac):
                 messagebox.showinfo("Éxito", "Puerta eliminada correctamente.")
                 self.cargar_tabla_puertas()
 
@@ -2143,8 +2143,8 @@ class AdminGUI(tk.Tk):
         area = getattr(self, "area_visor_actual", "General")
         
         def tarea_pdf():
-            import reportes
-            exito = reportes.generar_reporte_pdf(ruta, area, logs_data, permitidos, denegados)
+            import reports
+            exito = reports.generar_reporte_pdf(ruta, area, logs_data, permitidos, denegados)
             if exito:
                 self.after(0, lambda: messagebox.showinfo("Éxito", f"El PDF se guardó correctamente en:\n{ruta}"))
                 import platform
@@ -2675,8 +2675,8 @@ class AdminGUI(tk.Tk):
                     finally:
                         conn.close()
             
-            import puertas
-            ok = puertas.registrar_puerta(mac_detectada, nombre, area_id, tipo)
+            import doors
+            ok = doors.registrar_puerta(mac_detectada, nombre, area_id, tipo)
             if ok:
                 messagebox.showinfo("Éxito", f"La puerta '{nombre}' se registró correctamente en el sistema.", parent=dlg)
                 dlg.destroy()
@@ -2758,7 +2758,7 @@ class AdminGUI(tk.Tk):
                 import io
                 import re
                 
-                import puertas
+                import doors
                 
                 top.after(0, lambda: lbl_status.config(text="Conectando y borrando memoria..."))
                 
@@ -2804,7 +2804,7 @@ class AdminGUI(tk.Tk):
                     if mac_match:
                         mac_erased = mac_match.group(1).upper()
                         if eliminar_de_bd:
-                            puertas.eliminar_puerta(mac_erased)
+                            doors.eliminar_puerta(mac_erased)
                             msg = f"El lector ha sido formateado exitosamente.\n\nLa puerta con MAC {mac_erased} fue eliminada del sistema."
                         else:
                             msg = f"El lector ha sido formateado exitosamente.\n\nLa puerta con MAC {mac_erased} se mantuvo en la base de datos."
@@ -2836,7 +2836,7 @@ class AdminGUI(tk.Tk):
                         if mac_match:
                             mac_erased = mac_match.group(1).upper()
                             if eliminar_de_bd:
-                                puertas.eliminar_puerta(mac_erased)
+                                doors.eliminar_puerta(mac_erased)
                                 msg2 = f"El lector ha sido formateado exitosamente.\n\nLa puerta con MAC {mac_erased} fue eliminada del sistema."
                             else:
                                 msg2 = f"El lector ha sido formateado exitosamente.\n\nLa puerta con MAC {mac_erased} se mantuvo en la base de datos."
