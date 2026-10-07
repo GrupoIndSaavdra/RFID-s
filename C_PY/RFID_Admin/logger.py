@@ -1,16 +1,44 @@
 import logging
 import os
-import sys
+from utils import get_base_path
 
-app_path = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.path.dirname(os.path.abspath(__file__))
-log_file = os.path.join(app_path, "app.log")
+log_file = os.path.join(get_base_path(), "app.log")
 
 logging.basicConfig(
     filename=log_file,
-    level=logging.ERROR,
-    format="%(asctime)s - %(levelname)s - %(module)s - %(message)s"
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(module)s - %(message)s",
 )
 
-def log_error(msg):
+
+def log_error(msg: str) -> None:
+    """
+    Logs an error message to the log file and prints it to the console.
+
+    Args:
+        msg (str): The error message to be logged.
+    """
     logging.error(msg)
+    print(msg)
+
+
+def log_info(msg: str) -> None:
+    """
+    Logs an informational message to the log file and prints it to the console.
+
+    Args:
+        msg (str): The informational message to be logged.
+    """
+    logging.info(msg)
+    print(msg)
+
+
+def log_warning(msg: str) -> None:
+    """
+    Logs a warning message to the log file and prints it to the console.
+
+    Args:
+        msg (str): The warning message to be logged.
+    """
+    logging.warning(msg)
     print(msg)
