@@ -1,7 +1,7 @@
 import os
 from typing import Dict
 import serial.tools.list_ports
-from utils import get_base_path
+from utils import get_base_path, get_data_path
 
 
 def get_rfid_port() -> str:
@@ -25,7 +25,7 @@ PUERTO: str = get_rfid_port()
 BAUDRATE: int = 115200
 
 # Environment variables setup
-env_path = os.path.join(get_base_path(), ".env")
+env_path = os.path.join(get_data_path(), ".env")
 env_vars: Dict[str, str] = {}
 
 if not os.path.exists(env_path):

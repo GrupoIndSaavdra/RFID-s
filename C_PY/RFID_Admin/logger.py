@@ -1,8 +1,8 @@
 import logging
 import os
-from utils import get_base_path
+from utils import get_data_path
 
-log_file = os.path.join(get_base_path(), "app.log")
+log_file = os.path.join(get_data_path(), "app.log")
 
 logging.basicConfig(
     filename=log_file,
