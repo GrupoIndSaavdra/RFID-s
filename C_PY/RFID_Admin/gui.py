@@ -1719,31 +1719,69 @@ class AdminGUI(tk.Tk):
         tk.Label(
             frame_login, text="Contraseña:", font=("Segoe UI", 10), bg="#FFFFFF"
         ).pack(anchor="w", padx=50, pady=(10, 0))
-        ent_pass = ttk.Entry(frame_login, font=("Segoe UI", 12), show="*")
-        ent_pass.pack(fill=tk.X, padx=50, pady=5)
+
+        frame_pass = tk.Frame(frame_login, bg="#FFFFFF")
+        frame_pass.pack(fill=tk.X, padx=50, pady=5)
+
+        ent_pass = ttk.Entry(frame_pass, font=("Segoe UI", 12), show="*")
+        ent_pass.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        def toggle_password():
+            if ent_pass.cget("show") == "*":
+                ent_pass.config(show="")
+                btn_show_pass.config(text="🙈")
+            else:
+                ent_pass.config(show="*")
+                btn_show_pass.config(text="👁")
+
+        btn_show_pass = tk.Button(
+            frame_pass,
+            text="👁",
+            bg="#FFFFFF",
+            fg="#000000",
+            bd=0,
+            font=("Segoe UI", 12),
+            cursor="hand2",
+            command=toggle_password,
+        )
+        btn_show_pass.pack(side=tk.RIGHT, padx=(5, 0))
 
         def intentar_login(event=None):
             usuario = ent_user.get()
             clave = ent_pass.get()
-            import auth
 
-            rol = auth.login(usuario, clave)
-            if rol:
-                self.rol_actual = rol
-                self.usuario_actual = usuario
-                self.frame_top.pack(fill=tk.X, side=tk.TOP)
-                self.frame_top_sep.pack(fill=tk.X, side=tk.TOP)
-                self.construir_sidebar()
-                self.frame_sidebar.config(width=220)
-                self.frame_sidebar.pack(side=tk.LEFT, fill=tk.Y, before=self.frame_main)
-                self.menu_visible = True
+            btn_login.config(text="Conectando...", state=tk.DISABLED)
 
-                if rol in ["Superadmin", "Admin", "ingeniero"]:
-                    self.mostrar_vista_tablero()
+            def check_login_thread():
+                import auth
+                rol = auth.login(usuario, clave)
+                self.after(0, procesar_login, rol, usuario)
+
+            def procesar_login(rol, u):
+                if not self.winfo_exists():
+                    return
+                btn_login.config(text="Entrar", state=tk.NORMAL)
+                if rol:
+                    self.rol_actual = rol
+                    self.usuario_actual = u
+                    self.frame_top.pack(fill=tk.X, side=tk.TOP)
+                    self.frame_top_sep.pack(fill=tk.X, side=tk.TOP)
+                    self.construir_sidebar()
+                    self.frame_sidebar.config(width=220)
+                    self.frame_sidebar.pack(side=tk.LEFT, fill=tk.Y, before=self.frame_main)
+                    self.menu_visible = True
+
+                    if rol in ["Superadmin", "Admin", "ingeniero"]:
+                        self.mostrar_vista_tablero()
+                    else:
+                        self.mostrar_vista_usuarios()
                 else:
-                    self.mostrar_vista_usuarios()
-            else:
-                messagebox.showerror("Error", "Credenciales incorrectas", parent=self)
+                    messagebox.showerror("Error", "Credenciales incorrectas o servidor no disponible", parent=self)
+                    ent_pass.delete(0, tk.END)
+                    ent_pass.focus_set()
+
+            import threading
+            threading.Thread(target=check_login_thread, daemon=True).start()
 
         btn_login = tk.Button(
             frame_login,
@@ -1753,7 +1791,7 @@ class AdminGUI(tk.Tk):
             font=("Segoe UI", 12, "bold"),
             command=intentar_login,
         )
-        btn_login.pack(fill=tk.X, padx=50, pady=20)
+        btn_login.pack(fill=tk.X, padx=50, pady=10)
         ent_pass.bind("<Return>", intentar_login)
 
         self.focus_force()

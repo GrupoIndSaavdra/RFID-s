@@ -30,7 +30,7 @@ env_vars: Dict[str, str] = {}
 
 if not os.path.exists(env_path):
     with open(env_path, "w", encoding="utf-8") as f:
-        f.write("DB_HOST=localhost\n")
+        f.write("DB_HOST=192.168.137.1\n")
         f.write("DB_USER=root\n")
         f.write("DB_PASS=\n")
         f.write("DB_NAME=rfid_db\n")

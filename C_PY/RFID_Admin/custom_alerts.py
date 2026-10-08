@@ -130,17 +130,10 @@ class CustomAlert(tk.Toplevel):
                 <= e.y_root
                 <= self.winfo_rooty() + self.winfo_height()
             ):
-                self.configure(highlightbackground="red", highlightthickness=2)
-                hdr.configure(bg="#ffcccc")
-                self.bell()
-                self.after(
-                    150,
-                    lambda: self.configure(
-                        highlightbackground="#CCCCCC", highlightthickness=1
-                    )
-                    or hdr.configure(bg="#FFFFFF")
-                    or self.focus_force(),
-                )
+                if a_t in ("info", "error", "warning"):
+                    self.ok()
+                else:
+                    self.cancel()
 
         self.bind("<Button-1>", b_c)
 
@@ -153,18 +146,22 @@ class CustomAlert(tk.Toplevel):
 
     def ok(self):
         self.result = "ok"
+        self.grab_release()
         self.destroy()
 
     def yes(self):
         self.result = True
+        self.grab_release()
         self.destroy()
 
     def no(self):
         self.result = False
+        self.grab_release()
         self.destroy()
 
     def cancel(self):
         self.result = None
+        self.grab_release()
         self.destroy()
 
 
