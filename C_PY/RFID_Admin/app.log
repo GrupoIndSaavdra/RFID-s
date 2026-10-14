@@ -1,0 +1,43 @@
+2026-10-14 08:58:17,932 - INFO - __init__ - package: mysql.connector.plugins
+2026-10-14 08:58:17,933 - INFO - __init__ - plugin_name: mysql_native_password
+2026-10-14 08:58:17,944 - INFO - __init__ - AUTHENTICATION_PLUGIN_CLASS: MySQLNativePasswordAuthPlugin
+2026-10-14 08:58:18,001 - INFO - logger - User 'admin' logged in successfully with role 'Admin'.
+2026-10-14 08:58:18,008 - INFO - logger - User 'Alejandro Pineda' logged in successfully with role 'Superadmin'.
+2026-10-14 09:54:31,841 - INFO - __init__ - package: mysql.connector.plugins
+2026-10-14 09:54:31,841 - INFO - __init__ - plugin_name: mysql_native_password
+2026-10-14 09:54:31,847 - INFO - __init__ - AUTHENTICATION_PLUGIN_CLASS: MySQLNativePasswordAuthPlugin
+2026-10-14 11:59:36,100 - INFO - __init__ - package: mysql.connector.plugins
+2026-10-14 11:59:36,101 - INFO - __init__ - plugin_name: mysql_native_password
+2026-10-14 11:59:36,104 - INFO - __init__ - AUTHENTICATION_PLUGIN_CLASS: MySQLNativePasswordAuthPlugin
+2026-10-14 12:00:17,002 - INFO - __init__ - package: mysql.connector.plugins
+2026-10-14 12:00:17,003 - INFO - __init__ - plugin_name: mysql_native_password
+2026-10-14 12:00:17,005 - INFO - __init__ - AUTHENTICATION_PLUGIN_CLASS: MySQLNativePasswordAuthPlugin
+2026-10-14 12:03:06,092 - INFO - __init__ - package: mysql.connector.plugins
+2026-10-14 12:03:06,093 - INFO - __init__ - plugin_name: mysql_native_password
+2026-10-14 12:03:06,095 - INFO - __init__ - AUTHENTICATION_PLUGIN_CLASS: MySQLNativePasswordAuthPlugin
+2026-10-14 12:03:20,244 - INFO - __init__ - package: mysql.connector.plugins
+2026-10-14 12:03:20,245 - INFO - __init__ - plugin_name: mysql_native_password
+2026-10-14 12:03:20,247 - INFO - __init__ - AUTHENTICATION_PLUGIN_CLASS: MySQLNativePasswordAuthPlugin
+2026-10-14 12:15:24,564 - INFO - __init__ - package: mysql.connector.plugins
+2026-10-14 12:15:24,564 - INFO - __init__ - plugin_name: mysql_native_password
+2026-10-14 12:15:24,567 - INFO - __init__ - AUTHENTICATION_PLUGIN_CLASS: MySQLNativePasswordAuthPlugin
+2026-10-14 12:15:48,935 - INFO - __init__ - package: mysql.connector.plugins
+2026-10-14 12:15:48,935 - INFO - __init__ - plugin_name: mysql_native_password
+2026-10-14 12:15:48,937 - INFO - __init__ - AUTHENTICATION_PLUGIN_CLASS: MySQLNativePasswordAuthPlugin
+2026-10-14 12:15:48,956 - INFO - logger - Cuenta 'test_temp_user' con rol 'User' creada exitosamente.
+2026-10-14 12:15:48,968 - INFO - logger - Cuenta con id 4 eliminada.
+2026-10-14 12:18:32,617 - INFO - __init__ - package: mysql.connector.plugins
+2026-10-14 12:18:32,618 - INFO - __init__ - plugin_name: mysql_native_password
+2026-10-14 12:18:32,620 - INFO - __init__ - AUTHENTICATION_PLUGIN_CLASS: MySQLNativePasswordAuthPlugin
+2026-10-14 12:19:08,298 - INFO - __init__ - package: mysql.connector.plugins
+2026-10-14 12:19:08,299 - INFO - __init__ - plugin_name: mysql_native_password
+2026-10-14 12:19:08,301 - INFO - __init__ - AUTHENTICATION_PLUGIN_CLASS: MySQLNativePasswordAuthPlugin
+2026-10-14 12:19:24,463 - INFO - __init__ - package: mysql.connector.plugins
+2026-10-14 12:19:24,464 - INFO - __init__ - plugin_name: mysql_native_password
+2026-10-14 12:19:24,466 - INFO - __init__ - AUTHENTICATION_PLUGIN_CLASS: MySQLNativePasswordAuthPlugin
+2026-10-14 12:28:53,583 - INFO - __init__ - package: mysql.connector.plugins
+2026-10-14 12:28:53,583 - INFO - __init__ - plugin_name: mysql_native_password
+2026-10-14 12:28:53,586 - INFO - __init__ - AUTHENTICATION_PLUGIN_CLASS: MySQLNativePasswordAuthPlugin
+2026-10-14 12:30:31,053 - INFO - __init__ - package: mysql.connector.plugins
+2026-10-14 12:30:31,054 - INFO - __init__ - plugin_name: mysql_native_password
+2026-10-14 12:30:31,057 - INFO - __init__ - AUTHENTICATION_PLUGIN_CLASS: MySQLNativePasswordAuthPlugin

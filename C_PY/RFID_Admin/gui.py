@@ -261,14 +261,18 @@ class AdminGUI(tk.Tk):
         try:
             import os
             import ctypes
+            from utils import get_image_path
 
             myappid = "csproject.rfid_admin.gui.1.0"
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
-            icon_path = os.path.join(
-                os.path.dirname(os.path.abspath(__file__)), "Imagenes", "G.ico"
-            )
-            if os.path.exists(icon_path):
-                self.iconbitmap(icon_path)
+            ico_path = get_image_path("G.ico")
+            png_path = get_image_path("G.png")
+            if os.path.exists(ico_path):
+                self.iconbitmap(ico_path)
+            if os.path.exists(png_path):
+                icon_img = ImageTk.PhotoImage(Image.open(png_path))
+                self.iconphoto(True, icon_img)
+                self._app_icon_img = icon_img
         except Exception as e:
             print("Error cargando ícono de ventana:", e)
 
@@ -366,34 +370,29 @@ class AdminGUI(tk.Tk):
         self.rol_actual = None
         self.usuario_actual = None
 
-        base_dir = os.path.dirname(os.path.abspath(__file__))
+        from utils import get_image_path
         self.img_paths = {
-            "accept": os.path.join(base_dir, "Imagenes", "Agregar.png"),
-            "alarm": os.path.join(base_dir, "Imagenes", "DELET.png"),
-            "hourglass": os.path.join(base_dir, "Imagenes", "Recarga de tablas.png"),
-            "save": os.path.join(
-                base_dir, "Imagenes", "Guardar información de tarjetas-doors.png"
-            ),
-            "write": os.path.join(base_dir, "Imagenes", "editar-informacion.png"),
-            "menu": os.path.join(base_dir, "Imagenes", "Menú.png"),
-            "fondo_inicio": os.path.join(base_dir, "Imagenes", "Fondo de inicio.jpg"),
-            "fondo_usuarios": os.path.join(base_dir, "Imagenes", "Fondo de users.png"),
-            "logo": os.path.join(base_dir, "Imagenes", "Logo.png"),
-            "buscar": os.path.join(base_dir, "Imagenes", "Buscar.png"),
-            "activar": os.path.join(base_dir, "Imagenes", "Activar 1.png"),
-            "eliminar": os.path.join(base_dir, "Imagenes", "Eliminar.png"),
-            "tablero": os.path.join(base_dir, "Imagenes", "Tablero.png"),
-            "usuarios_btn": os.path.join(base_dir, "Imagenes", "Usuarios.png"),
-            "visor_btn": os.path.join(base_dir, "Imagenes", "Visor 1.png"),
-            "puertas_btn": os.path.join(base_dir, "Imagenes", "Puertas.png"),
-            "descarga": os.path.join(base_dir, "Imagenes", "Descarga.png"),
-            "grupo": os.path.join(base_dir, "Imagenes", "grupo.png"),
-            "usuario_activo2": os.path.join(
-                base_dir, "Imagenes", "Usuario activo (2).png"
-            ),
-            "usuario_inactivo": os.path.join(
-                base_dir, "Imagenes", "Usuario Inactivo.png"
-            ),
+            "accept": get_image_path("Agregar.png"),
+            "alarm": get_image_path("DELET.png"),
+            "hourglass": get_image_path("Recarga de tablas.png"),
+            "save": get_image_path("Guardar información de tarjetas-puertas.png") or get_image_path("Guardar información de tarjetas-doors.png"),
+            "write": get_image_path("editar-informacion.png"),
+            "menu": get_image_path("Menú.png"),
+            "fondo_inicio": get_image_path("Fondo de inicio.jpg"),
+            "fondo_usuarios": get_image_path("Fondo de users.png"),
+            "logo": get_image_path("Logo.png"),
+            "buscar": get_image_path("Buscar.png"),
+            "activar": get_image_path("Activar 1.png"),
+            "eliminar": get_image_path("Eliminar.png"),
+            "tablero": get_image_path("Tablero.png"),
+            "usuarios_btn": get_image_path("Usuarios.png"),
+            "visor_btn": get_image_path("Visor 1.png"),
+            "puertas_btn": get_image_path("Puertas.png"),
+            "descarga": get_image_path("Descarga.png"),
+            "grupo": get_image_path("grupo.png"),
+            "usuario_activo2": get_image_path("Usuario activo (2).png"),
+            "usuario_inactivo": get_image_path("Usuario Inactivo.png"),
+            "cuentas_btn": get_image_path("cuenta-de-usuario.png"),
         }
         self.iconos = {}
 
@@ -474,6 +473,17 @@ class AdminGUI(tk.Tk):
         except Exception:
             if hasattr(self, "pool_frames_p"):
                 delattr(self, "pool_frames_p")
+
+        try:
+            if (
+                hasattr(self, "pool_frames_c")
+                and self.pool_frames_c
+                and not self.pool_frames_c[0].winfo_exists()
+            ):
+                delattr(self, "pool_frames_c")
+        except Exception:
+            if hasattr(self, "pool_frames_c"):
+                delattr(self, "pool_frames_c")
 
         # 2. Creación del pool si no existe
         if (
@@ -570,9 +580,63 @@ class AdminGUI(tk.Tk):
                 btn_del.config(command=action_del_p)
                 self.pool_frames_p.append(f)
 
+        if (
+            not hasattr(self, "pool_frames_c")
+            and hasattr(self, "tree_cuentas")
+            and self.tree_cuentas.winfo_exists()
+        ):
+            self.pool_frames_c = []
+            for i in range(35):
+                f = tk.Frame(self.tree_cuentas, bg="#FFFFFF")
+                btn_edit = tk.Button(
+                    f,
+                    image=self.cargar_icono("write", 30),
+                    bg="#FFFFFF",
+                    bd=0,
+                    activebackground="#F0F0F0",
+                    cursor="hand2",
+                    relief=tk.FLAT,
+                    highlightthickness=0,
+                )
+                btn_edit.pack(side=tk.LEFT, expand=True, pady=2)
+                ToolTip(btn_edit, "Opciones de Cuenta")
+
+                btn_del = tk.Button(
+                    f,
+                    image=self.cargar_icono("alarm", 30),
+                    bg="#FFFFFF",
+                    bd=0,
+                    activebackground="#F0F0F0",
+                    cursor="hand2",
+                    relief=tk.FLAT,
+                    highlightthickness=0,
+                )
+                btn_del.pack(side=tk.LEFT, expand=True, pady=2)
+                ToolTip(btn_del, "Eliminar Cuenta")
+
+                def action_edit_c(fr=f):
+                    if hasattr(fr, "item_id"):
+                        self.tree_cuentas.selection_set(fr.item_id)
+                        x = fr.winfo_rootx()
+                        y = fr.winfo_rooty() + fr.winfo_height()
+                        self.mostrar_menu_contextual_cuenta(x, y)
+
+                def action_del_c(fr=f):
+                    if hasattr(fr, "item_id"):
+                        self.tree_cuentas.selection_set(fr.item_id)
+                        vals = self.tree_cuentas.item(fr.item_id, "values")
+                        if vals:
+                            c_id, u_name = vals[0], vals[1]
+                            self.eliminar_cuenta_seleccionada(c_id, u_name)
+
+                btn_edit.config(command=action_edit_c)
+                btn_del.config(command=action_del_c)
+                self.pool_frames_c.append(f)
+
         # Check hover globally
         hovered_item_u = None
         hovered_item_p = None
+        hovered_item_c = None
 
         try:
             x_root, y_root = self.winfo_pointerxy()
@@ -621,6 +685,29 @@ class AdminGUI(tk.Tk):
                 if hovered_item_p:
                     self.tree_puertas.item(hovered_item_p, tags=("hover",))
                 self.tree_puertas.last_hovered = hovered_item_p
+
+            if (
+                self.vista_actual == "cuentas_sistema"
+                and hasattr(self, "tree_cuentas")
+                and self.tree_cuentas.winfo_exists()
+            ):
+                x = x_root - self.tree_cuentas.winfo_rootx()
+                y = y_root - self.tree_cuentas.winfo_rooty()
+                if (
+                    0 <= x <= self.tree_cuentas.winfo_width()
+                    and 0 <= y <= self.tree_cuentas.winfo_height()
+                ):
+                    hovered_item_c = self.tree_cuentas.identify_row(y)
+
+                last_c = getattr(self.tree_cuentas, "last_hovered", None)
+                if last_c and last_c != hovered_item_c:
+                    try:
+                        self.tree_cuentas.item(last_c, tags=())
+                    except:
+                        pass
+                if hovered_item_c:
+                    self.tree_cuentas.item(hovered_item_c, tags=("hover",))
+                self.tree_cuentas.last_hovered = hovered_item_c
         except Exception:
             pass
 
@@ -694,6 +781,42 @@ class AdminGUI(tk.Tk):
             if hasattr(self, "pool_frames_p"):
                 for i in range(used_p, len(self.pool_frames_p)):
                     f = self.pool_frames_p[i]
+                    if f.winfo_exists() and hasattr(f, "last_place"):
+                        f.place_forget()
+                        delattr(f, "last_place")
+
+            used_c = 0
+            if (
+                self.vista_actual == "cuentas_sistema"
+                and hasattr(self, "tree_cuentas")
+                and hasattr(self, "pool_frames_c")
+                and self.tree_cuentas.winfo_exists()
+            ):
+                for item in self.tree_cuentas.get_children():
+                    bbox = self.tree_cuentas.bbox(item, "acciones")
+                    if bbox and used_c < len(self.pool_frames_c):
+                        x, y, w, h = bbox
+                        f = self.pool_frames_c[used_c]
+                        if f.winfo_exists():
+                            f.item_id = item
+
+                            # Actualizar color basado en el hover
+                            bg_color = (
+                                "#0A8504" if item == hovered_item_c else "#FFFFFF"
+                            )
+                            if f.cget("bg") != bg_color:
+                                f.config(bg=bg_color)
+                                for btn in f.winfo_children():
+                                    btn.config(bg=bg_color, activebackground=bg_color)
+
+                            if getattr(f, "last_place", None) != (x, y, w, h):
+                                f.place(x=x, y=y, width=w, height=h)
+                                f.last_place = (x, y, w, h)
+                            used_c += 1
+
+            if hasattr(self, "pool_frames_c"):
+                for i in range(used_c, len(self.pool_frames_c)):
+                    f = self.pool_frames_c[i]
                     if f.winfo_exists() and hasattr(f, "last_place"):
                         f.place_forget()
                         delattr(f, "last_place")
@@ -791,6 +914,15 @@ class AdminGUI(tk.Tk):
         )
         btn_logout.pack(side=tk.RIGHT, padx=20, pady=15)
 
+        self.lbl_usuario_info = tk.Label(
+            self.frame_top,
+            text="",
+            fg="#0052cc",
+            bg="#FFFFFF",
+            font=("Segoe UI", 9, "bold"),
+        )
+        self.lbl_usuario_info.pack(side=tk.RIGHT, padx=15)
+
         self.lbl_estado_serial = tk.Label(
             self.frame_top,
             text="Lector: Buscando...",
@@ -833,8 +965,11 @@ class AdminGUI(tk.Tk):
             fill=tk.X, pady=(0, 10)
         )
 
-        # Botón Tablero (Logs)
-        if self.rol_actual in ["Superadmin", "Admin", "ingeniero"]:
+        es_superadmin = self.rol_actual in ["Superadmin", "ingeniero"]
+        es_admin = self.rol_actual in ["Superadmin", "Admin", "ingeniero"]
+
+        # Botón Tablero (Logs / Métricas) - Solo Superadmin y Admin
+        if es_admin:
             btn_tablero = ttk.Button(
                 self.frame_sidebar,
                 text="  Tablero",
@@ -846,7 +981,7 @@ class AdminGUI(tk.Tk):
             )
             btn_tablero.pack(fill=tk.X, pady=2)
 
-        # Botón principal Usuarios
+        # Botón principal Usuarios (Visible para todos)
         self.btn_main_usuarios = ttk.Button(
             self.frame_sidebar,
             text="  Usuarios",
@@ -872,33 +1007,37 @@ class AdminGUI(tk.Tk):
         )
         btn_reg_u.pack(fill=tk.X, pady=2)
 
-        # Botón principal Puertas
-        self.btn_main_puertas = ttk.Button(
-            self.frame_sidebar,
-            text="  Puertas",
-            image=self.cargar_icono("puertas_btn", 16),
-            compound=tk.LEFT,
-            style="Menu.TButton",
-            command=self.toggle_submenu_puertas,
-            takefocus=False,
-        )
-        self.btn_main_puertas.pack(fill=tk.X, pady=2)
+        # Botón principal Puertas - Solo Superadmin y Admin
+        if es_admin:
+            self.btn_main_puertas = ttk.Button(
+                self.frame_sidebar,
+                text="  Puertas",
+                image=self.cargar_icono("puertas_btn", 16),
+                compound=tk.LEFT,
+                style="Menu.TButton",
+                command=self.toggle_submenu_puertas,
+                takefocus=False,
+            )
+            self.btn_main_puertas.pack(fill=tk.X, pady=2)
 
-        self.frame_sub_puertas = tk.Frame(self.frame_sidebar, bg="#1E1F22", height=0)
-        self.frame_sub_puertas.pack_propagate(False)
+            self.frame_sub_puertas = tk.Frame(self.frame_sidebar, bg="#1E1F22", height=0)
+            self.frame_sub_puertas.pack_propagate(False)
 
-        btn_add_p = ttk.Button(
-            self.frame_sub_puertas,
-            text="  Agregar",
-            image=self.cargar_icono("accept", 16),
-            compound=tk.LEFT,
-            style="SubMenu.TButton",
-            command=self.mostrar_vista_formulario_puerta,
-            takefocus=False,
-        )
-        btn_add_p.pack(fill=tk.X, pady=2)
+            btn_add_p = ttk.Button(
+                self.frame_sub_puertas,
+                text="  Agregar",
+                image=self.cargar_icono("accept", 16),
+                compound=tk.LEFT,
+                style="SubMenu.TButton",
+                command=self.mostrar_vista_formulario_puerta,
+                takefocus=False,
+            )
+            btn_add_p.pack(fill=tk.X, pady=2)
+        else:
+            self.btn_main_puertas = None
+            self.frame_sub_puertas = None
 
-        # Botón principal Visor
+        # Botón principal Visor - Visible para todos
         self.btn_main_visor = ttk.Button(
             self.frame_sidebar,
             text="  Visor",
@@ -910,7 +1049,7 @@ class AdminGUI(tk.Tk):
         )
         self.btn_main_visor.pack(fill=tk.X, pady=2)
 
-        # Botón Historial (Permisos en Áreas)
+        # Botón Historial (Permisos en Áreas) - Visible para todos
         btn_historial = ttk.Button(
             self.frame_sidebar,
             text="  Historial Usuarios",
@@ -921,6 +1060,19 @@ class AdminGUI(tk.Tk):
             takefocus=False,
         )
         btn_historial.pack(fill=tk.X, pady=2)
+
+        # Botón Cuentas Sistema - Solo Superadmin y Admin
+        if es_admin:
+            btn_cuentas = ttk.Button(
+                self.frame_sidebar,
+                text="  Cuentas Sistema",
+                image=self.cargar_icono("cuentas_btn", 16),
+                compound=tk.LEFT,
+                style="Menu.TButton",
+                command=self.mostrar_vista_cuentas_sistema,
+                takefocus=False,
+            )
+            btn_cuentas.pack(fill=tk.X, pady=2)
 
         self.frame_sub_visor = tk.Frame(self.frame_sidebar, bg="#1E1F22", height=0)
         self.frame_sub_visor.pack_propagate(False)
@@ -946,44 +1098,48 @@ class AdminGUI(tk.Tk):
             )
             btn_v.pack(fill=tk.X, pady=2)
 
-        # Botón Activar en el sidebar principal
-        btn_activar = ttk.Button(
-            self.frame_sidebar,
-            text="  Activar puerta",
-            image=self.cargar_icono("activar", 16),
-            compound=tk.LEFT,
-            style="Menu.TButton",
-            command=self.mostrar_vista_flashear_esp32,
-            takefocus=False,
-        )
-        btn_activar.pack(fill=tk.X, pady=5)
+        # Firmware ESP32 - SOLO SUPERADMIN
+        if es_superadmin:
+            btn_activar = ttk.Button(
+                self.frame_sidebar,
+                text="  Activar puerta",
+                image=self.cargar_icono("activar", 16),
+                compound=tk.LEFT,
+                style="Menu.TButton",
+                command=self.mostrar_vista_flashear_esp32,
+                takefocus=False,
+            )
+            btn_activar.pack(fill=tk.X, pady=5)
 
-        btn_formatear = ttk.Button(
-            self.frame_sidebar,
-            text="  Desactivar puerta",
-            image=self.cargar_icono("eliminar", 16),
-            compound=tk.LEFT,
-            style="Menu.TButton",
-            command=self.mostrar_vista_formatear_esp32,
-            takefocus=False,
-        )
-        btn_formatear.pack(fill=tk.X, pady=5)
+            btn_formatear = ttk.Button(
+                self.frame_sidebar,
+                text="  Desactivar puerta",
+                image=self.cargar_icono("eliminar", 16),
+                compound=tk.LEFT,
+                style="Menu.TButton",
+                command=self.mostrar_vista_formatear_esp32,
+                takefocus=False,
+            )
+            btn_formatear.pack(fill=tk.X, pady=5)
 
-        # Sección Lectores Activos
-        tk.Frame(self.frame_sidebar, bg="#1E1F22", height=1).pack(
-            fill=tk.X, pady=(20, 10)
-        )
-        ttk.Label(self.frame_sidebar, text="PUERTAS", style="Sidebar.TLabel").pack(
-            anchor="w", padx=20, pady=5
-        )
+        # Sección Lectores Activos - Solo Superadmin y Admin
+        if es_admin:
+            tk.Frame(self.frame_sidebar, bg="#1E1F22", height=1).pack(
+                fill=tk.X, pady=(20, 10)
+            )
+            ttk.Label(self.frame_sidebar, text="PUERTAS", style="Sidebar.TLabel").pack(
+                anchor="w", padx=20, pady=5
+            )
 
-        self.frame_lista_puertas = tk.Frame(self.frame_sidebar, bg="#2B2D30")
-        self.frame_lista_puertas.pack(fill=tk.BOTH, expand=True)
-        self.render_lista_puertas_sidebar()
+            self.frame_lista_puertas = tk.Frame(self.frame_sidebar, bg="#2B2D30")
+            self.frame_lista_puertas.pack(fill=tk.BOTH, expand=True)
+            self.render_lista_puertas_sidebar()
+        else:
+            self.frame_lista_puertas = None
 
     def render_lista_puertas_sidebar(self):
         if (
-            not hasattr(self, "frame_lista_puertas")
+            not getattr(self, "frame_lista_puertas", None)
             or not self.frame_lista_puertas.winfo_exists()
         ):
             return
@@ -1003,7 +1159,7 @@ class AdminGUI(tk.Tk):
 
     def _apply_puertas_ui(self, lista_puertas):
         if (
-            not hasattr(self, "frame_lista_puertas")
+            not getattr(self, "frame_lista_puertas", None)
             or not self.frame_lista_puertas.winfo_exists()
         ):
             return
@@ -1028,7 +1184,7 @@ class AdminGUI(tk.Tk):
 
             if not lista_puertas:
                 if (
-                    not hasattr(self, "lbl_no_puertas")
+                    not getattr(self, "lbl_no_puertas", None)
                     or not self.lbl_no_puertas.winfo_exists()
                 ):
                     self.lbl_no_puertas = tk.Label(
@@ -1041,11 +1197,11 @@ class AdminGUI(tk.Tk):
                     self.lbl_no_puertas.pack(anchor="w", padx=20, pady=5)
             else:
                 if (
-                    hasattr(self, "lbl_no_puertas")
+                    getattr(self, "lbl_no_puertas", None)
                     and self.lbl_no_puertas.winfo_exists()
                 ):
                     self.lbl_no_puertas.destroy()
-                    delattr(self, "lbl_no_puertas")
+                    self.lbl_no_puertas = None
 
                 for p in lista_puertas:
                     if len(p) == 5:
@@ -1535,6 +1691,8 @@ class AdminGUI(tk.Tk):
             )
 
     def toggle_submenu_puertas(self):
+        if not getattr(self, "frame_sub_puertas", None):
+            return
         if self.vista_actual != "puertas":
             self.mostrar_vista_puertas()
 
@@ -1764,6 +1922,8 @@ class AdminGUI(tk.Tk):
                 if rol:
                     self.rol_actual = rol
                     self.usuario_actual = u
+                    if hasattr(self, "lbl_usuario_info"):
+                        self.lbl_usuario_info.config(text=f"👤 {u}  [{rol}]")
                     self.frame_top.pack(fill=tk.X, side=tk.TOP)
                     self.frame_top_sep.pack(fill=tk.X, side=tk.TOP)
                     self.construir_sidebar()
@@ -1800,6 +1960,8 @@ class AdminGUI(tk.Tk):
     def cerrar_sesion(self):
         self.rol_actual = None
         self.usuario_actual = None
+        if hasattr(self, "lbl_usuario_info"):
+            self.lbl_usuario_info.config(text="")
         self.mostrar_vista_login()
 
     # ========================== VISTA BIENVENIDA ==========================
@@ -1922,31 +2084,32 @@ class AdminGUI(tk.Tk):
             command=self.cargar_tabla_usuarios,
         ).pack(side=tk.RIGHT, padx=5)
 
-        btn_nuevo_rol = tk.Button(
-            frame_busqueda,
-            text="+ NUEVO ROL",
-            bg="#0052cc",
-            fg="#FFFFFF",
-            font=("Poppins", 10, "bold"),
-            bd=0,
-            activebackground="#003d99",
-            activeforeground="#FFFFFF",
-            command=self.mostrar_modal_nuevo_rol,
-        )
-        btn_nuevo_rol.pack(side=tk.RIGHT, padx=5, ipady=3, ipadx=10)
+        if self.rol_actual in ["Superadmin", "Admin", "ingeniero"]:
+            btn_nuevo_rol = tk.Button(
+                frame_busqueda,
+                text="+ NUEVO ROL",
+                bg="#0052cc",
+                fg="#FFFFFF",
+                font=("Poppins", 10, "bold"),
+                bd=0,
+                activebackground="#003d99",
+                activeforeground="#FFFFFF",
+                command=self.mostrar_modal_nuevo_rol,
+            )
+            btn_nuevo_rol.pack(side=tk.RIGHT, padx=5, ipady=3, ipadx=10)
 
-        btn_masiva = tk.Button(
-            frame_busqueda,
-            text="⚡ ASIGNACIÓN MASIVA",
-            bg="#FF9800",
-            fg="#FFFFFF",
-            font=("Poppins", 10, "bold"),
-            bd=0,
-            activebackground="#F57C00",
-            activeforeground="#FFFFFF",
-            command=self.mostrar_modal_asignacion_masiva,
-        )
-        btn_masiva.pack(side=tk.RIGHT, padx=15, ipady=3, ipadx=10)
+            btn_masiva = tk.Button(
+                frame_busqueda,
+                text="⚡ ASIGNACIÓN MASIVA",
+                bg="#FF9800",
+                fg="#FFFFFF",
+                font=("Poppins", 10, "bold"),
+                bd=0,
+                activebackground="#F57C00",
+                activeforeground="#FFFFFF",
+                command=self.mostrar_modal_asignacion_masiva,
+            )
+            btn_masiva.pack(side=tk.RIGHT, padx=15, ipady=3, ipadx=10)
 
         # Dropdown flotante (sin contenedor que empuje)
         frame_filtro = tk.Frame(self.frame_main, bg="#F0F0F0", height=0)
@@ -2471,6 +2634,9 @@ class AdminGUI(tk.Tk):
             )
 
     def eliminar_usuario_seleccionado(self, *args):
+        if self.rol_actual not in ["Superadmin", "Admin", "ingeniero"]:
+            messagebox.showerror("Acceso Denegado", "Solo administradores pueden eliminar usuarios.", parent=self)
+            return
         if not hasattr(self, "tree_usuarios") or not self.tree_usuarios.winfo_exists():
             return
         seleccion = self.tree_usuarios.selection()
@@ -2516,17 +2682,431 @@ class AdminGUI(tk.Tk):
             compound=tk.LEFT,
             command=self.editar_usuario_seleccionado,
         )
+        if self.rol_actual in ["Superadmin", "Admin", "ingeniero"]:
+            menu.add_command(
+                label=" Eliminar Usuario",
+                image=ico_alarm,
+                compound=tk.LEFT,
+                command=self.eliminar_usuario_seleccionado,
+            )
+        menu.post(x, y)
+
+    # ========================== VISTA CUENTAS SISTEMA ==========================
+    def mostrar_vista_cuentas_sistema(self):
+        if getattr(self, "vista_actual", None) == "cuentas_sistema":
+            return
+        if self.rol_actual not in ["Superadmin", "Admin", "ingeniero"]:
+            messagebox.showerror("Acceso Denegado", "No tienes permisos para administrar cuentas.", parent=self)
+            return
+
+        self.limpiar_vista()
+        self.vista_actual = "cuentas_sistema"
+        self.lbl_titulo.config(text="GESTIÓN DE CUENTAS DEL SISTEMA")
+
+        frame_header = tk.Frame(self.frame_main, bg="#FFFFFF")
+        frame_header.pack(fill=tk.X, pady=10, padx=20)
+
+        es_superadmin = self.rol_actual in ["Superadmin", "ingeniero"]
+        desc_text = "Usuarios con acceso al sistema RFID Admin"
+        if es_superadmin:
+            desc_text += "  •  Modo Superadmin (Contraseñas visibles)"
+        else:
+            desc_text += "  •  Modo Administrador (Contraseñas protegidas)"
+
+        tk.Label(
+            frame_header,
+            text=desc_text,
+            bg="#FFFFFF",
+            fg="#0052cc" if es_superadmin else "#555555",
+            font=("Segoe UI", 10, "bold" if es_superadmin else "normal"),
+        ).pack(side=tk.LEFT, padx=5, pady=5)
+
+        ico_hourglass = self.cargar_icono("hourglass", 20)
+        ttk.Button(
+            frame_header,
+            text=" Recargar",
+            image=ico_hourglass,
+            compound=tk.LEFT,
+            command=self.cargar_tabla_cuentas,
+        ).pack(side=tk.RIGHT, padx=5)
+
+        btn_nueva_cuenta = tk.Button(
+            frame_header,
+            text="+ NUEVA CUENTA",
+            bg="#0A8504",
+            fg="#FFFFFF",
+            font=("Segoe UI", 10, "bold"),
+            bd=0,
+            activebackground="#086603",
+            activeforeground="#FFFFFF",
+            command=self.mostrar_modal_nueva_cuenta,
+            cursor="hand2",
+        )
+        btn_nueva_cuenta.pack(side=tk.RIGHT, padx=10, ipady=4, ipadx=12)
+
+        frame_tabla = tk.Frame(self.frame_main, bg="#FFFFFF")
+        frame_tabla.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
+
+        columnas = ("id", "username", "rol", "password", "acciones")
+        self.tree_cuentas = ttk.Treeview(frame_tabla, columns=columnas, show="headings")
+        self.tree_cuentas.heading("id", text="ID")
+        self.tree_cuentas.heading("username", text="USUARIO")
+        self.tree_cuentas.heading("rol", text="ROL / PRIVILEGIO")
+        self.tree_cuentas.heading("password", text="CONTRASEÑA")
+        self.tree_cuentas.heading("acciones", text="ACCIONES")
+
+        self.tree_cuentas.column("id", width=60, anchor="center")
+        self.tree_cuentas.column("username", width=220, anchor="w")
+        self.tree_cuentas.column("rol", width=160, anchor="center")
+        self.tree_cuentas.column("password", width=160, anchor="center")
+        self.tree_cuentas.column("acciones", width=130, anchor="center")
+
+        self.tree_cuentas.tag_configure(
+            "hover", background="#0A8504", foreground="#FFFFFF"
+        )
+
+        scrollbar = ttk.Scrollbar(frame_tabla, orient=tk.VERTICAL, command=self.tree_cuentas.yview)
+        self.tree_cuentas.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.tree_cuentas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        def on_motion_cuentas(event):
+            item = self.tree_cuentas.identify_row(event.y)
+            last = getattr(self.tree_cuentas, "last_hovered", None)
+            if last and last != item:
+                try:
+                    self.tree_cuentas.item(last, tags=())
+                except:
+                    pass
+            if item:
+                self.tree_cuentas.item(item, tags=("hover",))
+            self.tree_cuentas.last_hovered = item
+
+        def on_leave_cuentas(event):
+            last = getattr(self.tree_cuentas, "last_hovered", None)
+            if last:
+                try:
+                    self.tree_cuentas.item(last, tags=())
+                except:
+                    pass
+                self.tree_cuentas.last_hovered = None
+
+        self.tree_cuentas.bind("<Motion>", on_motion_cuentas, add="+")
+        self.tree_cuentas.bind("<Leave>", on_leave_cuentas, add="+")
+        self.tree_cuentas.bind("<ButtonRelease-1>", self.on_click_tree_cuentas)
+        self.tree_cuentas.bind("<Button-3>", self.on_right_click_tree_cuentas)
+
+        self.cargar_tabla_cuentas()
+
+    def cargar_tabla_cuentas(self):
+        if not hasattr(self, "tree_cuentas") or not self.tree_cuentas.winfo_exists():
+            return
+        for item in self.tree_cuentas.get_children():
+            self.tree_cuentas.delete(item)
+
+        es_superadmin = self.rol_actual in ["Superadmin", "ingeniero"]
+        import auth
+        cuentas = auth.listar_cuentas(es_superadmin=es_superadmin)
+        for c in cuentas:
+            c_id, u_name, r_name, p_view = c
+            self.tree_cuentas.insert("", tk.END, values=(c_id, u_name, r_name, p_view, ""))
+
+    def on_click_tree_cuentas(self, event):
+        region = self.tree_cuentas.identify_region(event.x, event.y)
+        if region == "cell":
+            col = self.tree_cuentas.identify_column(event.x)
+            if col in ["#4", "#5"]:
+                item_id = self.tree_cuentas.identify_row(event.y)
+                if item_id:
+                    self.tree_cuentas.selection_set(item_id)
+                    self.mostrar_menu_contextual_cuenta(event.x_root, event.y_root)
+
+    def on_right_click_tree_cuentas(self, event):
+        item_id = self.tree_cuentas.identify_row(event.y)
+        if item_id:
+            self.tree_cuentas.selection_set(item_id)
+            self.mostrar_menu_contextual_cuenta(event.x_root, event.y_root)
+
+    def mostrar_menu_contextual_cuenta(self, x, y):
+        seleccion = self.tree_cuentas.selection()
+        if not seleccion:
+            return
+        vals = self.tree_cuentas.item(seleccion[0], "values")
+        c_id, u_name, r_name, p_view = vals[:4]
+        es_superadmin = self.rol_actual in ["Superadmin", "ingeniero"]
+
+        menu = tk.Menu(self, tearoff=0, font=("Segoe UI", 10))
+
+        if es_superadmin:
+            menu.add_command(
+                label=f" 👁 Ver Contraseña:  {p_view}",
+                command=lambda: messagebox.showinfo(
+                    f"Contraseña de {u_name}",
+                    f"Usuario: {u_name}\nRol: {r_name}\nContraseña: {p_view}",
+                    parent=self,
+                ),
+            )
+            def copiar_pass():
+                self.clipboard_clear()
+                self.clipboard_append(p_view)
+                messagebox.showinfo("Copiado", f"Contraseña de '{u_name}' copiada al portapapeles.", parent=self)
+
+            menu.add_command(
+                label=" 📋 Copiar Contraseña",
+                command=copiar_pass,
+            )
+            menu.add_separator()
+
         menu.add_command(
-            label=" Eliminar Usuario",
+            label=" 🔑 Cambiar Contraseña",
+            command=lambda: self.mostrar_modal_cambiar_password(c_id, u_name),
+        )
+
+        ico_alarm = self.cargar_icono("alarm", 16)
+        menu.ico_alarm = ico_alarm
+
+        menu.add_command(
+            label=f" Eliminar Cuenta '{u_name}'",
             image=ico_alarm,
             compound=tk.LEFT,
-            command=self.eliminar_usuario_seleccionado,
+            command=lambda: self.eliminar_cuenta_seleccionada(c_id, u_name),
         )
         menu.post(x, y)
 
-    # ========================== VISTA PUERTAS ==========================
+    def mostrar_modal_cambiar_password(self, account_id, username):
+        dlg = CustomModal(self, f"Cambiar Contraseña - {username}", "420x330")
+
+        tk.Label(
+            dlg,
+            text="🔑 Cambiar Contraseña",
+            font=("Segoe UI", 13, "bold"),
+            bg="#FFFFFF",
+            fg="#007BFF",
+        ).pack(pady=(20, 5))
+
+        tk.Label(
+            dlg,
+            text=f"Cuenta de acceso: {username}",
+            font=("Segoe UI", 10, "bold"),
+            bg="#FFFFFF",
+            fg="#333333",
+        ).pack(pady=(0, 15))
+
+        frame_form = tk.Frame(dlg, bg="#FFFFFF")
+        frame_form.pack(fill=tk.BOTH, expand=True, padx=40)
+
+        tk.Label(frame_form, text="Nueva Contraseña:", font=("Segoe UI", 10, "bold"), bg="#FFFFFF").pack(anchor="w", pady=(5, 2))
+        f_p1 = tk.Frame(frame_form, bg="#FFFFFF")
+        f_p1.pack(fill=tk.X, pady=(0, 10))
+        ent_p1 = ttk.Entry(f_p1, font=("Segoe UI", 11), show="*")
+        ent_p1.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        def toggle_p1():
+            if ent_p1.cget("show") == "*":
+                ent_p1.config(show="")
+                btn_p1.config(text="🙈")
+            else:
+                ent_p1.config(show="*")
+                btn_p1.config(text="👁")
+
+        btn_p1 = tk.Button(f_p1, text="👁", bg="#FFFFFF", bd=0, command=toggle_p1, cursor="hand2")
+        btn_p1.pack(side=tk.RIGHT, padx=5)
+
+        tk.Label(frame_form, text="Confirmar Nueva Contraseña:", font=("Segoe UI", 10, "bold"), bg="#FFFFFF").pack(anchor="w", pady=(5, 2))
+        ent_p2 = ttk.Entry(frame_form, font=("Segoe UI", 11), show="*")
+        ent_p2.pack(fill=tk.X, pady=(0, 15))
+
+        def guardar():
+            p1 = ent_p1.get()
+            p2 = ent_p2.get()
+            if not p1:
+                return messagebox.showwarning("Requerido", "Ingresa la nueva contraseña.", parent=dlg)
+            if len(p1) < 4:
+                return messagebox.showwarning("Inválida", "La contraseña debe tener al menos 4 caracteres.", parent=dlg)
+            if p1 != p2:
+                return messagebox.showerror("Error", "Las contraseñas no coinciden.", parent=dlg)
+
+            import auth
+            ok, msg = auth.cambiar_password_cuenta(account_id, p1)
+            if ok:
+                messagebox.showinfo("Éxito", msg, parent=self)
+                dlg.destroy()
+                self.cargar_tabla_cuentas()
+            else:
+                messagebox.showerror("Error", msg, parent=dlg)
+
+        frame_btns = tk.Frame(dlg, bg="#FFFFFF")
+        frame_btns.pack(fill=tk.X, padx=40, pady=(0, 20))
+
+        tk.Button(
+            frame_btns,
+            text="GUARDAR",
+            bg="#0A8504",
+            fg="#FFFFFF",
+            font=("Segoe UI", 10, "bold"),
+            bd=0,
+            command=guardar,
+            cursor="hand2",
+        ).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5), ipady=5)
+
+        tk.Button(
+            frame_btns,
+            text="CANCELAR",
+            bg="#6c757d",
+            fg="#FFFFFF",
+            font=("Segoe UI", 10, "bold"),
+            bd=0,
+            command=dlg.destroy,
+            cursor="hand2",
+        ).pack(side=tk.RIGHT, fill=tk.X, expand=True, padx=(5, 0), ipady=5)
+
+        ent_p1.focus_set()
+
+    def eliminar_cuenta_seleccionada(self, account_id, username):
+        if self.rol_actual not in ["Superadmin", "Admin", "ingeniero"]:
+            messagebox.showerror("Acceso Denegado", "No tienes permisos para eliminar cuentas.", parent=self)
+            return
+
+        if username == self.usuario_actual:
+            messagebox.showwarning(
+                "Acción no permitida",
+                "No puedes eliminar la cuenta con la que has iniciado sesión actualmente.",
+                parent=self,
+            )
+            return
+
+        if messagebox.askyesno(
+            "Confirmar Baja",
+            f"¿Estás seguro de que deseas eliminar permanentemente la cuenta:\n'{username}'?",
+            parent=self,
+        ):
+            import auth
+            ok, msg = auth.eliminar_cuenta(account_id)
+            if ok:
+                messagebox.showinfo("Éxito", msg, parent=self)
+                self.cargar_tabla_cuentas()
+            else:
+                messagebox.showerror("Error", msg, parent=self)
+
+    def mostrar_modal_nueva_cuenta(self):
+        dlg = CustomModal(self, "Registrar Nueva Cuenta", "450x450")
+
+        tk.Label(
+            dlg,
+            text="👤 Nueva Cuenta de Acceso",
+            font=("Segoe UI", 14, "bold"),
+            bg="#FFFFFF",
+            fg="#007BFF",
+        ).pack(pady=(20, 5))
+
+        tk.Label(
+            dlg,
+            text="Asigna un nombre de usuario, contraseña y rol de acceso.",
+            font=("Segoe UI", 9),
+            bg="#FFFFFF",
+            fg="#666666",
+        ).pack(pady=(0, 15))
+
+        frame_form = tk.Frame(dlg, bg="#FFFFFF")
+        frame_form.pack(fill=tk.BOTH, expand=True, padx=40)
+
+        tk.Label(frame_form, text="Nombre de Usuario:", font=("Segoe UI", 10, "bold"), bg="#FFFFFF").pack(anchor="w", pady=(5, 2))
+        ent_user = ttk.Entry(frame_form, font=("Segoe UI", 11))
+        ent_user.pack(fill=tk.X, pady=(0, 10))
+
+        tk.Label(frame_form, text="Rol / Nivel de Acceso:", font=("Segoe UI", 10, "bold"), bg="#FFFFFF").pack(anchor="w", pady=(5, 2))
+
+        # Superadmin puede crear cualquier rol; Admin puede crear Admin o User
+        if self.rol_actual in ["Superadmin", "ingeniero"]:
+            roles_disp = ["User", "Admin", "Superadmin"]
+        else:
+            roles_disp = ["User", "Admin"]
+
+        cb_rol = ttk.Combobox(frame_form, values=roles_disp, font=("Segoe UI", 10), state="readonly")
+        cb_rol.pack(fill=tk.X, pady=(0, 10))
+        cb_rol.set("User")
+
+        tk.Label(frame_form, text="Contraseña (mínimo 4 caracteres):", font=("Segoe UI", 10, "bold"), bg="#FFFFFF").pack(anchor="w", pady=(5, 2))
+        f_pass = tk.Frame(frame_form, bg="#FFFFFF")
+        f_pass.pack(fill=tk.X, pady=(0, 10))
+        ent_pass = ttk.Entry(f_pass, font=("Segoe UI", 11), show="*")
+        ent_pass.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        def toggle_p():
+            if ent_pass.cget("show") == "*":
+                ent_pass.config(show="")
+                btn_p.config(text="🙈")
+            else:
+                ent_pass.config(show="*")
+                btn_p.config(text="👁")
+
+        btn_p = tk.Button(f_pass, text="👁", bg="#FFFFFF", bd=0, command=toggle_p)
+        btn_p.pack(side=tk.RIGHT, padx=5)
+
+        tk.Label(frame_form, text="Confirmar Contraseña:", font=("Segoe UI", 10, "bold"), bg="#FFFFFF").pack(anchor="w", pady=(5, 2))
+        ent_pass2 = ttk.Entry(frame_form, font=("Segoe UI", 11), show="*")
+        ent_pass2.pack(fill=tk.X, pady=(0, 15))
+
+        def guardar():
+            u = ent_user.get().strip()
+            r = cb_rol.get().strip()
+            p = ent_pass.get()
+            p2 = ent_pass2.get()
+
+            if not u:
+                return messagebox.showwarning("Campo requerido", "Ingresa un nombre de usuario.", parent=dlg)
+            if not p:
+                return messagebox.showwarning("Campo requerido", "Ingresa una contraseña.", parent=dlg)
+            if len(p) < 4:
+                return messagebox.showwarning("Contraseña corta", "La contraseña debe tener al menos 4 caracteres.", parent=dlg)
+            if p != p2:
+                return messagebox.showerror("Error", "Las contraseñas no coinciden.", parent=dlg)
+
+            import auth
+            ok, msg = auth.registrar_cuenta(u, p, r)
+            if ok:
+                messagebox.showinfo("Éxito", msg, parent=self)
+                dlg.destroy()
+                self.cargar_tabla_cuentas()
+            else:
+                messagebox.showerror("Error", msg, parent=dlg)
+
+        frame_btns = tk.Frame(dlg, bg="#FFFFFF")
+        frame_btns.pack(fill=tk.X, padx=40, pady=(0, 20))
+
+        tk.Button(
+            frame_btns,
+            text="GUARDAR CUENTA",
+            bg="#0A8504",
+            fg="#FFFFFF",
+            font=("Segoe UI", 10, "bold"),
+            bd=0,
+            activebackground="#086603",
+            activeforeground="#FFFFFF",
+            command=guardar,
+            cursor="hand2",
+        ).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5), ipady=6)
+
+        tk.Button(
+            frame_btns,
+            text="CANCELAR",
+            bg="#6c757d",
+            fg="#FFFFFF",
+            font=("Segoe UI", 10, "bold"),
+            bd=0,
+            activebackground="#5a6268",
+            activeforeground="#FFFFFF",
+            command=dlg.destroy,
+            cursor="hand2",
+        ).pack(side=tk.RIGHT, fill=tk.X, expand=True, padx=(5, 0), ipady=6)
+
+        ent_user.focus_set()
+
     def mostrar_vista_puertas(self):
         if getattr(self, "vista_actual", None) == "puertas":
+            return
+        if self.rol_actual not in ["Superadmin", "Admin", "ingeniero"]:
+            messagebox.showerror("Acceso Denegado", "No tienes permisos para acceder a la gestión de puertas.", parent=self)
             return
         self.limpiar_vista()
         self.vista_actual = "puertas"
@@ -2602,6 +3182,9 @@ class AdminGUI(tk.Tk):
     def mostrar_vista_formulario_puerta(
         self, mac_editar=None, nombre_editar="", area_editar="", tipo_editar="Entrada"
     ):
+        if self.rol_actual not in ["Superadmin", "Admin", "ingeniero"]:
+            messagebox.showerror("Acceso Denegado", "No tienes permisos para registrar o editar puertas.", parent=self)
+            return
         self.limpiar_vista()
         self.vista_actual = "formulario_puerta"
         self.lbl_titulo.config(
@@ -3626,6 +4209,9 @@ class AdminGUI(tk.Tk):
         self.after(2000, self.actualizar_logs_visor)
 
     def mostrar_vista_flashear_esp32(self):
+        if self.rol_actual not in ["Superadmin", "ingeniero"]:
+            messagebox.showerror("Acceso Denegado", "Solo el Superadministrador puede activar o flashear puertas.", parent=self)
+            return
         # Dialogo para flashear ESP32
         import serial.tools.list_ports
         import subprocess
@@ -4314,6 +4900,9 @@ class AdminGUI(tk.Tk):
         ).pack(side=tk.LEFT, padx=10)
 
     def mostrar_vista_formatear_esp32(self):
+        if self.rol_actual not in ["Superadmin", "ingeniero"]:
+            messagebox.showerror("Acceso Denegado", "Solo el Superadministrador puede desactivar o formatear puertas.", parent=self)
+            return
         import serial.tools.list_ports
         import threading
 

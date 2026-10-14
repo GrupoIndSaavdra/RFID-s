@@ -48,9 +48,16 @@ def inicializar_db() -> None:
             "id INT AUTO_INCREMENT PRIMARY KEY, "
             "username VARCHAR(50) UNIQUE NOT NULL, "
             "password_hash VARCHAR(64) NOT NULL, "
-            "rol VARCHAR(20) NOT NULL)"
+            "rol VARCHAR(20) NOT NULL, "
+            "password_view VARCHAR(100) DEFAULT '')"
         )
         conn.commit()
+
+        try:
+            cur.execute("ALTER TABLE admin_users ADD COLUMN password_view VARCHAR(100) DEFAULT ''")
+            conn.commit()
+        except Exception:
+            pass
 
         # Insert default users if table is empty
         cur.execute("SELECT COUNT(*) FROM admin_users")
@@ -58,8 +65,8 @@ def inicializar_db() -> None:
             p_a = hashlib.sha256(b"admin").hexdigest()
             p_r = hashlib.sha256(b"rh").hexdigest()
             cur.execute(
-                "INSERT INTO admin_users (username, password_hash, rol) VALUES (%s, %s, %s), (%s, %s, %s)",
-                ("admin", p_a, "ingeniero", "rh", p_r, "operador"),
+                "INSERT INTO admin_users (username, password_hash, rol, password_view) VALUES (%s, %s, %s, %s), (%s, %s, %s, %s)",
+                ("admin", p_a, "ingeniero", "admin", "rh", p_r, "operador", "rh"),
             )
             conn.commit()
 

@@ -18,8 +18,8 @@ Source: "Imagenes\*"; DestDir: "{app}\Imagenes"; Flags: ignoreversion recursesub
 Source: ".env"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 
 [Icons]
-Name: "{group}\RFID Admin"; Filename: "{app}\main.exe"
-Name: "{commondesktop}\RFID Admin"; Filename: "{app}\main.exe"
+Name: "{group}\RFID Admin"; Filename: "{app}\main.exe"; IconFilename: "{app}\Imagenes\G.ico"
+Name: "{commondesktop}\RFID Admin"; Filename: "{app}\main.exe"; IconFilename: "{app}\Imagenes\G.ico"
 
 [Run]
 Filename: "{app}\main.exe"; Description: "Lanzar RFID Admin"; Flags: nowait postinstall skipifsilent
